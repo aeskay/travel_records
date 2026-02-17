@@ -15,6 +15,7 @@ const Sidebar = ({
     toggleSidebar,
     counts,
     onOpenSettings,
+    onOpenMap,
     allTypes,
     onChangeStatus,
     onChangeType,
@@ -85,7 +86,7 @@ const Sidebar = ({
 
                         {/* Filter Tabs */}
                         <div className="sidebar-tabs">
-                            {['all', 'evaluated', 'pending'].map(type => (
+                            {['all', 'evaluated', 'pending', 'excluded'].map(type => (
                                 <button
                                     key={type}
                                     onClick={() => setFilterType(type)}
@@ -149,19 +150,7 @@ const Sidebar = ({
                     {/* Footer */}
                     <div className="sidebar-footer" style={{ display: 'flex', justifyContent: 'space-around', padding: '0.75rem 0.5rem' }}>
                         <button
-                            onClick={() => {
-                                // Sort by test_sequence, exclude sections without sequence or coordinates
-                                const ordered = (allSections || [])
-                                    .filter(s => s.coordinates && s.test_sequence && String(s.test_sequence).trim() !== '')
-                                    .sort((a, b) => Number(a.test_sequence) - Number(b.test_sequence));
-                                const coords = ordered.map(s => s.coordinates);
-                                if (coords.length === 0) { alert('No sections with test sequences and coordinates found.'); return; }
-                                const origin = coords[0];
-                                const dest = coords[coords.length - 1];
-                                const waypoints = coords.slice(1, -1).join('|');
-                                const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(dest)}&waypoints=${encodeURIComponent(waypoints)}`;
-                                window.open(url, '_blank');
-                            }}
+                            onClick={onOpenMap}
                             className="btn btn-ghost"
                             style={{ flexDirection: 'column', gap: '4px', padding: '0.5rem', fontSize: '0.7rem', minWidth: '60px' }}
                             title="View trip on map"

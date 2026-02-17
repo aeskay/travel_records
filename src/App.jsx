@@ -7,6 +7,7 @@ import ManualAddModal from './components/ManualAddModal';
 import LoginScreen from './components/LoginScreen';
 import SettingsView from './components/SettingsView';
 import EditSectionModal from './components/EditSectionModal';
+import TripMapView from './components/TripMapView';
 import { getSections, addSections, addSection, deleteSection } from './db';
 import { parseCSV } from './utils/csvImporter';
 import { UserProvider, useUser } from './context/UserContext';
@@ -54,15 +55,18 @@ function AppContent() {
   const filteredSections = useMemo(() => {
     if (filterType === 'evaluated') return sections.filter(s => s.status === 'Evaluated');
     if (filterType === 'pending') return sections.filter(s => s.status !== 'Evaluated');
+    if (filterType === 'excluded') return sections.filter(s => !s.test_sequence || String(s.test_sequence).trim() === '');
     return sections;
   }, [sections, filterType]);
 
   const counts = useMemo(() => {
     const evaluated = sections.filter(s => s.status === 'Evaluated').length;
+    const excluded = sections.filter(s => !s.test_sequence || String(s.test_sequence).trim() === '').length;
     return {
       all: sections.length,
       evaluated,
-      pending: sections.length - evaluated
+      pending: sections.length - evaluated,
+      excluded
     };
   }, [sections]);
 
@@ -83,6 +87,23 @@ function AppContent() {
   const handleDeleteSection = async (section) => {
     await deleteSection(section.id, user.username);
     if (selectedSection?.id === section.id) setSelectedSection(null);
+    loadSections();
+  };
+
+  // Auto-renumber: when a section is removed from the route (sequence cleared),
+  // shift all subsequent sequence numbers down to fill the gap.
+  const handleRemoveFromRoute = async (section) => {
+    const removedSeq = Number(section.test_sequence);
+    // Clear the removed section's sequence
+    const updated = { ...section, test_sequence: '' };
+    await addSection(updated, user.username);
+    // Find all sections with sequence > removedSeq and decrement
+    const toRenumber = sections
+      .filter(s => s.test_sequence && Number(s.test_sequence) > removedSeq)
+      .sort((a, b) => Number(a.test_sequence) - Number(b.test_sequence));
+    for (const s of toRenumber) {
+      await addSection({ ...s, test_sequence: String(Number(s.test_sequence) - 1) }, user.username);
+    }
     loadSections();
   };
 
@@ -109,6 +130,7 @@ function AppContent() {
         toggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
         counts={counts}
         onOpenSettings={() => setCurrentView('settings')}
+        onOpenMap={() => setCurrentView('map')}
         allTypes={allTypes}
         onChangeStatus={handleChangeStatus}
         onChangeType={handleChangeType}
@@ -130,7 +152,19 @@ function AppContent() {
         </div>
 
         <div className="h-full overflow-y-auto">
-          {currentView === 'settings' ? (
+          {currentView === 'map' ? (
+            <TripMapView
+              sections={sections}
+              selectedSection={selectedSection}
+              onSelectSection={setSelectedSection}
+              onBack={() => setCurrentView('dashboard')}
+              onUpdateSection={async (updated) => {
+                await addSection(updated, user.username);
+                loadSections();
+              }}
+              onRemoveFromRoute={handleRemoveFromRoute}
+            />
+          ) : currentView === 'settings' ? (
             <SettingsView onClose={() => setCurrentView('dashboard')} />
           ) : (
             selectedSection ? (

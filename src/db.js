@@ -2,6 +2,7 @@ import { db } from './firebase';
 import {
     collection,
     getDocs,
+    getDoc,
     doc,
     setDoc,
     addDoc,
@@ -16,6 +17,7 @@ import {
 // Collection refs
 const sectionsRef = collection(db, 'sections');
 const detailsRef = collection(db, 'details');
+const privateNotesRef = collection(db, 'private_notes');
 
 // Helper to snapshot to array
 const snapToData = (snap) => snap.docs.map(d => ({ ...d.data(), id: d.id }));
@@ -95,6 +97,34 @@ export const getAllData = async (username) => {
         sections: snapToData(sectionsSnap),
         details: snapToData(detailsSnap)
     };
+};
+
+
+
+export const getPrivateNote = async (sectionId, username) => {
+    // Unique ID for the private note based on section + user
+    const noteId = `${sectionId}_${username}`;
+    const docRef = doc(privateNotesRef, noteId);
+    try {
+        const d = await getDoc(docRef);
+        if (d.exists()) {
+            return { id: d.id, ...d.data() };
+        }
+        return null;
+    } catch (e) {
+        console.error("Error fetching private note:", e);
+        return null;
+    }
+};
+
+export const savePrivateNote = async (sectionId, username, content) => {
+    const noteId = `${sectionId}_${username}`;
+    await setDoc(doc(privateNotesRef, noteId), {
+        sectionId,
+        username,
+        content,
+        lastModified: new Date().toISOString()
+    });
 };
 
 export const restoreData = async (data, username) => {
