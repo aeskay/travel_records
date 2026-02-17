@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { MoreVertical, CheckCircle, Circle, Edit2, Trash2, Tag } from 'lucide-react';
+import { MoreVertical, CheckCircle, Circle, Edit2, Trash2, Tag, MapPinned } from 'lucide-react';
 
-const SectionActionMenu = ({ section, allTypes = [], onChangeStatus, onChangeType, onDelete, onEdit }) => {
+const SectionActionMenu = ({ section, allTypes = [], onChangeStatus, onChangeType, onDelete, onEdit, onViewOnMap }) => {
     const [open, setOpen] = useState(false);
     const [showTypeSubmenu, setShowTypeSubmenu] = useState(false);
     const [newType, setNewType] = useState('');
@@ -220,6 +220,23 @@ const SectionActionMenu = ({ section, allTypes = [], onChangeStatus, onChangeTyp
                     >
                         <Edit2 size={14} /> Edit Section
                     </button>
+
+                    {/* View on Trip Map */}
+                    {onViewOnMap && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onViewOnMap(section); setOpen(false); }}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '8px',
+                                width: '100%', padding: '8px 12px', border: 'none',
+                                background: 'transparent', color: 'hsl(var(--foreground))',
+                                cursor: 'pointer', fontSize: '0.875rem', textAlign: 'left'
+                            }}
+                            onMouseEnter={(e) => e.target.style.backgroundColor = 'hsl(var(--accent))'}
+                            onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                        >
+                            <MapPinned size={14} /> View on Trip Map
+                        </button>
+                    )}
 
                     {/* Divider */}
                     <div style={{ height: '1px', backgroundColor: 'hsl(var(--border))', margin: '4px 0' }} />

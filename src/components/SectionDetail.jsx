@@ -7,7 +7,7 @@ import { useUser } from '../context/UserContext';
 import SectionActionMenu from './SectionActionMenu';
 import { printSections } from '../utils/printUtils';
 
-const SectionDetail = ({ section, onUpdate, allTypes, onChangeStatus, onChangeType, onDeleteSection, onEdit }) => {
+const SectionDetail = ({ section, onUpdate, allTypes, onChangeStatus, onChangeType, onDeleteSection, onEdit, onViewOnMap }) => {
     const { user } = useUser();
     const [isUpdating, setIsUpdating] = useState(false);
     const [showPrivateNote, setShowPrivateNote] = useState(false);
@@ -59,7 +59,7 @@ const SectionDetail = ({ section, onUpdate, allTypes, onChangeStatus, onChangeTy
                             <div className="flex items-center gap-6">
                                 <h1 className="text-lg md:text-2xl font-extrabold tracking-tight text-[hsl(var(--foreground))]">{section.id}</h1>
                                 {/* Badge next to title — desktop only */}
-                                <span className="hidden md:inline-block badge bg-sky-500/10 text-sky-600 border border-sky-200/20 text-xs font-medium px-2 py-0.5 rounded">
+                                <span className="badge bg-sky-500/10 text-sky-600 border border-sky-200/20 text-xs font-medium px-2 py-0.5 rounded">
                                     {section.type || 'Uncategorized'}
                                 </span>
                             </div>
@@ -67,11 +67,7 @@ const SectionDetail = ({ section, onUpdate, allTypes, onChangeStatus, onChangeTy
                                 <MapPin size={16} />
                                 <span>{section.city || 'Unknown'}, {section.county || 'Unknown'}</span>
                             </div>
-                            <div className="md:hidden mt-2">
-                                <span className="badge bg-sky-500/10 text-sky-600 border border-sky-200/20 text-xs font-medium px-2 py-0.5 rounded">
-                                    {section.type || 'Uncategorized'}
-                                </span>
-                            </div>
+
                         </div>
 
                         <div className="flex gap-2 items-center map-print">
@@ -100,6 +96,7 @@ const SectionDetail = ({ section, onUpdate, allTypes, onChangeStatus, onChangeTy
                                 onChangeType={onChangeType}
                                 onDelete={onDeleteSection}
                                 onEdit={onEdit}
+                                onViewOnMap={onViewOnMap}
                             />
                         </div>
                     </div>

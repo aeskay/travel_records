@@ -113,6 +113,12 @@ function AppContent() {
     loadSections();
   };
 
+  const handleViewOnMap = (section) => {
+    setSelectedSection(section);
+    setCurrentView('map');
+    if (window.innerWidth < 768) setSidebarCollapsed(true);
+  };
+
   if (loading) return <div className="flex h-screen items-center justify-center text-muted">Loading...</div>;
   if (!user) return <LoginScreen />;
 
@@ -129,8 +135,8 @@ function AppContent() {
         isCollapsed={sidebarCollapsed}
         toggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
         counts={counts}
-        onOpenSettings={() => setCurrentView('settings')}
-        onOpenMap={() => setCurrentView('map')}
+        onOpenSettings={() => { setCurrentView('settings'); if (window.innerWidth < 768) setSidebarCollapsed(true); }}
+        onOpenMap={() => { setCurrentView('map'); if (window.innerWidth < 768) setSidebarCollapsed(true); }}
         allTypes={allTypes}
         onChangeStatus={handleChangeStatus}
         onChangeType={handleChangeType}
@@ -138,6 +144,7 @@ function AppContent() {
         onEdit={(section) => setEditingSection(section)}
         allSections={sections}
         username={user?.username}
+        onViewOnMap={handleViewOnMap}
       />
 
       <main className="main-content">
@@ -176,6 +183,7 @@ function AppContent() {
                 onChangeType={handleChangeType}
                 onDeleteSection={handleDeleteSection}
                 onEdit={(section) => setEditingSection(section)}
+                onViewOnMap={handleViewOnMap}
               />
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-muted text-center p-8 border-2 border-dashed border-[hsl(var(--border))] rounded-lg">
