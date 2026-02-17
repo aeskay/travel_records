@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { ArrowLeft, MapPin, Navigation, CheckCircle, Clock, ExternalLink, Building2, Route, Home, Hash, Trash2, Save, Landmark } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
@@ -265,10 +265,17 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
     // Get icon for section
     const getIcon = (section) => {
         const isSelected = selectedSection?.id === section.id;
-        if (isSelected) return selectedIcon;
+        const seqNum = section.test_sequence && String(section.test_sequence).trim();
+
+        if (isSelected) {
+            // Selected: use blue color but keep the sequence number if it has one
+            if (seqNum) {
+                return createSequenceIcon(seqNum, '#3b82f6', '#2563eb');
+            }
+            return selectedIcon;
+        }
 
         // If section is on the route, show numbered marker
-        const seqNum = section.test_sequence && String(section.test_sequence).trim();
         if (seqNum) {
             const color = section.status === 'Evaluated' ? '#22c55e' : '#f59e0b';
             const border = section.status === 'Evaluated' ? '#16a34a' : '#d97706';
@@ -276,6 +283,16 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
         }
 
         return section.status === 'Evaluated' ? evaluatedIcon : pendingIcon;
+    };
+
+    // Component to handle map background clicks for deselection
+    const MapClickHandler = () => {
+        useMapEvents({
+            click: () => {
+                onSelectSection(null);
+            },
+        });
+        return null;
     };
 
     return (
@@ -312,6 +329,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                     />
 
                     <FitBounds positions={allPositions} selectedPosition={selectedPosition} />
+                    <MapClickHandler />
 
                     {/* Home Marker */}
                     <Marker position={HOME_POSITION} icon={homeIcon} zIndexOffset={500}>

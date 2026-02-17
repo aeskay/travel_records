@@ -9,7 +9,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
       manifest: {
-        name: 'Section Info Manager',
+        name: '7147 Travels',
         short_name: 'Sections',
         description: 'Manage highway section information offline',
         theme_color: '#ffffff',
