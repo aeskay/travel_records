@@ -1386,6 +1386,128 @@ select.input option {
     cursor: not-allowed;
 }
 
+/* Days Plan Panel */
+.days-plan-panel {
+    position: absolute;
+    top: 70px;
+    /* Below header */
+    right: 1rem;
+    width: 320px;
+    max-height: calc(100% - 90px);
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.days-plan-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid hsl(var(--border));
+    background: hsl(var(--muted)/0.3);
+}
+
+.days-plan-header h3 {
+    font-size: 0.9rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.days-plan-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.day-card {
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: hsl(var(--background));
+    transition: all 0.2s;
+}
+
+.day-card.expanded {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    border-color: hsl(var(--primary)/0.3);
+}
+
+.day-card-header {
+    padding: 0.75rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    background: hsl(var(--muted)/0.1);
+}
+
+.day-card-header:hover {
+    background: hsl(var(--muted)/0.2);
+}
+
+.day-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.day-color-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 2px;
+}
+
+.day-card-body {
+    padding: 1rem;
+    border-top: 1px solid hsl(var(--border));
+    background: hsl(var(--card));
+}
+
+.sequence-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 0.25rem;
+}
+
+.sequence-cell {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 4px;
+    border: 1px solid hsl(var(--border));
+    background: transparent;
+    color: hsl(var(--foreground));
+    cursor: pointer;
+    transition: all 0.1s;
+}
+
+.sequence-cell:hover:not(:disabled) {
+    background: hsl(var(--accent));
+    transform: scale(1.1);
+}
+
+.sequence-cell.greyed {
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+    opacity: 0.3;
+    cursor: not-allowed;
+    border-color: transparent;
+}
+
 /* ---- Mobile ---- */
 @media (max-width: 768px) {
     .trip-map-header {

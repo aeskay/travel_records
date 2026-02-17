@@ -136,3 +136,24 @@ export const restoreData = async (data, username) => {
         }
     }
 };
+
+export const saveSharedDaysPlan = async (plan) => {
+    const planRef = collection(db, 'user_plans');
+    await setDoc(doc(planRef, 'SHARED_ADMIN_PLAN'), {
+        plan,
+        lastModified: new Date().toISOString()
+    });
+};
+
+export const getSharedDaysPlan = async () => {
+    const planRef = collection(db, 'user_plans');
+    try {
+        const d = await getDoc(doc(planRef, 'SHARED_ADMIN_PLAN'));
+        if (d.exists()) {
+            return d.data().plan || [];
+        }
+    } catch (e) {
+        console.error("Error fetching shared days plan:", e);
+    }
+    return [];
+};

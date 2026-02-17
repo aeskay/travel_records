@@ -7,7 +7,7 @@ import { useUser } from '../context/UserContext';
 import SectionActionMenu from './SectionActionMenu';
 import { printSections } from '../utils/printUtils';
 
-const SectionDetail = ({ section, onUpdate, allTypes, onChangeStatus, onChangeType, onDeleteSection, onEdit, onViewOnMap }) => {
+const SectionDetail = ({ section, onUpdate, allTypes, onChangeStatus, onChangeType, onDeleteSection, onEdit, onViewOnMap, isAdmin }) => {
     const { user } = useUser();
     const [isUpdating, setIsUpdating] = useState(false);
     const [showPrivateNote, setShowPrivateNote] = useState(false);
@@ -97,6 +97,7 @@ const SectionDetail = ({ section, onUpdate, allTypes, onChangeStatus, onChangeTy
                                 onDelete={onDeleteSection}
                                 onEdit={onEdit}
                                 onViewOnMap={onViewOnMap}
+                                isAdmin={isAdmin}
                             />
                         </div>
                     </div>

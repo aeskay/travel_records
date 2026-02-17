@@ -1,8 +1,10 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
-import { ArrowLeft, MapPin, Navigation, CheckCircle, Clock, ExternalLink, Building2, Route, Home, Hash, Trash2, Save, Landmark } from 'lucide-react';
+import { ArrowLeft, MapPin, Navigation, CheckCircle, Clock, ExternalLink, Building2, Route, Home, Hash, Trash2, Save, Landmark, Calendar, Plus, X, ChevronDown, ChevronUp, Eye, EyeOff } from 'lucide-react';
+
 import 'leaflet/dist/leaflet.css';
+import { saveSharedDaysPlan, getSharedDaysPlan } from '../db';
 
 // --- Constants ---
 const HOME_POSITION = [33.58703457593024, -101.87436165377096];
@@ -127,7 +129,8 @@ const fetchOSRMRoute = async (waypoints) => {
 };
 
 // --- Sequence Editor Sub-component ---
-const SequenceEditor = ({ section, onUpdateSequence, onRemoveFromRoute }) => {
+const SequenceEditor = ({ section, onUpdateSequence, onRemoveFromRoute, isAdmin }) => {
+    if (!isAdmin) return null;
     const [seqValue, setSeqValue] = useState(section.test_sequence || '');
     const [saving, setSaving] = useState(false);
 
@@ -180,11 +183,145 @@ const SequenceEditor = ({ section, onUpdateSequence, onRemoveFromRoute }) => {
 };
 
 // --- Main Component ---
-const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpdateSection, onRemoveFromRoute }) => {
+const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpdateSection, onRemoveFromRoute, username, isAdmin }) => {
     const isDark = useTheme();
     const allTypes = useMemo(() => [...new Set(sections.map(s => s.type).filter(Boolean))], [sections]);
     const [routeGeometry, setRouteGeometry] = useState(null);
     const [routeLoading, setRouteLoading] = useState(false);
+
+    // Days Plan State
+    const [showDaysPlan, setShowDaysPlan] = useState(false);
+    const [daysPlan, setDaysPlan] = useState([]); // [{ day: 1, sequences: [1, 2, 3] }]
+    const [expandedDay, setExpandedDay] = useState(null);
+    const [highlightedDays, setHighlightedDays] = useState(new Set()); // Set of day numbers
+    const [showAllDays, setShowAllDays] = useState(false);
+
+    // Load shared plan
+    useEffect(() => {
+        getSharedDaysPlan().then(plan => {
+            if (plan && Array.isArray(plan)) {
+                setDaysPlan(plan);
+            }
+        });
+    }, []);
+
+    // Save shared plan (debounced) - Admin Only
+    useEffect(() => {
+        if (isAdmin) {
+            const timer = setTimeout(() => {
+                if (daysPlan.length > 0) {
+                    saveSharedDaysPlan(daysPlan);
+                }
+            }, 1000); // 1s debounce
+            return () => clearTimeout(timer);
+        }
+    }, [daysPlan, isAdmin]);
+
+    const handleAddDay = () => {
+        const nextDay = daysPlan.length + 1;
+        setDaysPlan([...daysPlan, { day: nextDay, sequences: [] }]);
+        setExpandedDay(nextDay);
+    };
+
+    const handleRemoveDay = (dayNum) => {
+        const newPlan = daysPlan.filter(d => d.day !== dayNum)
+            .map((d, index) => ({ ...d, day: index + 1 })); // Re-index
+        setDaysPlan(newPlan);
+        if (expandedDay === dayNum) setExpandedDay(null);
+
+        // Update highlighted days
+        const newHighlighted = new Set();
+        Array.from(highlightedDays).forEach(d => {
+            if (d < dayNum) newHighlighted.add(d);
+            if (d > dayNum) newHighlighted.add(d - 1);
+        });
+        setHighlightedDays(newHighlighted);
+    };
+
+    const toggleSequenceInDay = (dayNum, seq) => {
+        if (!isAdmin) return;
+        setDaysPlan(prev => prev.map(d => {
+            if (d.day !== dayNum) return d;
+            const newSeqs = d.sequences.includes(seq)
+                ? d.sequences.filter(s => s !== seq)
+                : [...d.sequences, seq].sort((a, b) => a - b);
+            return { ...d, sequences: newSeqs };
+        }));
+    };
+
+    const isSequenceAssigned = (seq) => {
+        return daysPlan.some(d => d.sequences.includes(seq));
+    };
+
+    const getAssignedDay = (seq) => {
+        return daysPlan.find(d => d.sequences.includes(seq));
+    };
+
+    const toggleDayHighlight = (dayNum) => {
+        setHighlightedDays(prev => {
+            const next = new Set(prev);
+            if (next.has(dayNum)) next.delete(dayNum);
+            else next.add(dayNum);
+
+            // Sync showAllDays state if needed
+            if (next.size === daysPlan.length && daysPlan.length > 0) setShowAllDays(true);
+            else setShowAllDays(false);
+
+            return next;
+        });
+    };
+
+    const toggleShowAllDays = () => {
+        if (showAllDays) {
+            setHighlightedDays(new Set());
+            setShowAllDays(false);
+        } else {
+            const all = new Set(daysPlan.map(d => d.day));
+            setHighlightedDays(all);
+            setShowAllDays(true);
+        }
+    };
+
+    // Helper: Calculate distance in miles
+    const calculateDistance = (coord1, coord2) => {
+        const R = 3959; // Miles
+        const dLat = (coord2[0] - coord1[0]) * Math.PI / 180;
+        const dLon = (coord2[1] - coord1[1]) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(coord1[0] * Math.PI / 180) * Math.cos(coord2[0] * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    };
+
+    const getEstimatedTime = (day) => {
+        if (!day.sequences || day.sequences.length === 0) return "0m";
+
+        // Get sections for this day
+        const daySections = sections.filter(s =>
+            day.sequences.includes(Number(s.test_sequence)) && s.coordinates
+        ).sort((a, b) => Number(a.test_sequence) - Number(b.test_sequence));
+
+        if (daySections.length === 0) return "0m";
+
+        let totalMiles = 0;
+        for (let i = 0; i < daySections.length - 1; i++) {
+            const c1 = parseCoords(daySections[i].coordinates);
+            const c2 = parseCoords(daySections[i + 1].coordinates);
+            if (c1 && c2) {
+                totalMiles += calculateDistance(c1, c2);
+            }
+        }
+
+        // Add 15 mins per stop + driving time (assume 50mph avg)
+        const drivingMinutes = (totalMiles / 50) * 60;
+        const stopMinutes = daySections.length * 15;
+        const totalMinutes = Math.round(drivingMinutes + stopMinutes);
+
+        const h = Math.floor(totalMinutes / 60);
+        const m = totalMinutes % 60;
+        return `${h}h ${m}m`;
+    };
 
     // Parse sections with valid coordinates
     const mappableSections = useMemo(() => {
@@ -266,6 +403,21 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
     const getIcon = (section) => {
         const isSelected = selectedSection?.id === section.id;
         const seqNum = section.test_sequence && String(section.test_sequence).trim();
+        const seqInt = seqNum ? parseInt(seqNum, 10) : null;
+
+        // Check if this stops belongs to a highlighted day
+        let dayColor = null;
+        let dayBorder = null;
+
+        if (seqInt) {
+            const assignedDay = getAssignedDay(seqInt);
+            if (assignedDay && highlightedDays.has(assignedDay.day)) {
+                // Get color from palette based on day number
+                const colorIdx = (assignedDay.day - 1) % CATEGORY_COLORS.length;
+                dayColor = CATEGORY_COLORS[colorIdx];
+                dayBorder = '#fff'; // White border for day-highlighted items to make them pop
+            }
+        }
 
         if (isSelected) {
             // Selected: use blue color but keep the sequence number if it has one
@@ -273,6 +425,11 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                 return createSequenceIcon(seqNum, '#3b82f6', '#2563eb');
             }
             return selectedIcon;
+        }
+
+        // Highlighted Day overrides normal status colors
+        if (dayColor && seqNum) {
+            return createSequenceIcon(seqNum, dayColor, dayBorder);
         }
 
         // If section is on the route, show numbered marker
@@ -312,7 +469,114 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                         {routeLoading && ' • Loading route...'}
                     </span>
                 </div>
+                <button
+                    onClick={() => setShowDaysPlan(!showDaysPlan)}
+                    className={`btn btn-ghost ${showDaysPlan ? 'bg-accent' : ''}`}
+                    style={{ marginLeft: 'auto', gap: '8px' }}
+                >
+                    <Calendar size={18} />
+                    <span className="hidden md:inline">Days Plan</span>
+                </button>
             </div>
+
+            {/* Days Plan Panel */}
+            {showDaysPlan && (
+                <div className="days-plan-panel">
+                    <div className="days-plan-header">
+                        <h3>Trip Itinerary</h3>
+                        <button onClick={() => setShowDaysPlan(false)} className="btn-icon"><X size={16} /></button>
+                    </div>
+
+                    <div className="days-plan-content">
+                        {daysPlan.length === 0 && (
+                            <div className="text-muted text-center p-4 text-sm">
+                                No days added yet. Click below to start planning!
+                            </div>
+                        )}
+
+                        {daysPlan.map(day => (
+                            <div key={day.day} className="day-card">
+                                <div
+                                    className="day-card-header"
+                                    onClick={() => setExpandedDay(expandedDay === day.day ? null : day.day)}
+                                >
+                                    <div
+                                        className="day-color-dot"
+                                        style={{ background: CATEGORY_COLORS[(day.day - 1) % CATEGORY_COLORS.length] }}
+                                    />
+                                    <span className="font-bold flex-1">
+                                        Day {day.day}
+                                        <span className="text-xs font-normal text-muted ml-2">({getEstimatedTime(day)})</span>
+                                    </span>
+
+                                    <button
+                                        className="btn-icon"
+                                        onClick={(e) => { e.stopPropagation(); toggleDayHighlight(day.day); }}
+                                        style={{ color: highlightedDays.has(day.day) ? CATEGORY_COLORS[(day.day - 1) % CATEGORY_COLORS.length] : 'inherit' }}
+                                        title={highlightedDays.has(day.day) ? "Hide on map" : "Show on map"}
+                                    >
+                                        {highlightedDays.has(day.day) ? <Eye size={16} /> : <EyeOff size={16} />}
+                                    </button>
+
+                                    {/* Admin Only Remove */}
+                                    {isAdmin && (
+                                        <button
+                                            className="btn-icon text-destructive hover:bg-destructive/10"
+                                            onClick={(e) => { e.stopPropagation(); handleRemoveDay(day.day); }}
+                                            title="Remove Day"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    )}
+
+                                    {expandedDay === day.day ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                </div>
+
+                                {expandedDay === day.day && (
+                                    <div className="day-card-body">
+                                        <div className="text-xs text-muted mb-2">Assign stops to this day:</div>
+                                        <div className="sequence-grid">
+                                            {orderedRouteSections.length > 0 ? (
+                                                orderedRouteSections.map(s => {
+                                                    const seq = Number(s.test_sequence);
+                                                    const isAssignedToThis = day.sequences.includes(seq);
+                                                    const isAssignedToOther = !isAssignedToThis && isSequenceAssigned(seq);
+
+                                                    return (
+                                                        <button
+                                                            key={s.id}
+                                                            className={`sequence-cell ${isAssignedToThis ? 'selected' : ''} ${isAssignedToOther ? 'greyed' : ''}`}
+                                                            onClick={() => toggleSequenceInDay(day.day, seq)}
+                                                            disabled={(isAssignedToOther) || (!isAdmin)} // Disable if assigned elsewhere OR not admin
+                                                            title={`Stop #${seq}: ${s.id}`}
+                                                            style={isAssignedToThis ? {
+                                                                background: CATEGORY_COLORS[(day.day - 1) % CATEGORY_COLORS.length],
+                                                                color: '#fff',
+                                                                borderColor: 'transparent',
+                                                                cursor: isAdmin ? 'pointer' : 'default'
+                                                            } : { cursor: (!isAssignedToOther && isAdmin) ? 'pointer' : 'default' }}
+                                                        >
+                                                            {seq}
+                                                        </button>
+                                                    );
+                                                })
+                                            ) : (
+                                                <div className="col-span-full text-center text-xs text-muted">Thinking... No stops defined yet.</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+
+                        {isAdmin && (
+                            <button onClick={handleAddDay} className="btn btn-outline w-full mt-4 gap-2">
+                                <Plus size={16} /> Add Day {daysPlan.length + 1}
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Map */}
             <div className="trip-map-wrapper">
@@ -422,11 +686,12 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                                             )}
                                         </div>
 
-                                        {/* Sequence Editor */}
+                                        {/* Sequence Editor - Admin Only */}
                                         <SequenceEditor
                                             section={section}
                                             onUpdateSequence={handleUpdateSequence}
                                             onRemoveFromRoute={handleRemoveFromRoute}
+                                            isAdmin={isAdmin}
                                         />
 
                                         {section.coordinates && (

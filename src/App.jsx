@@ -54,7 +54,8 @@ function AppContent() {
 
   const filteredSections = useMemo(() => {
     if (filterType === 'evaluated') return sections.filter(s => s.status === 'Evaluated');
-    if (filterType === 'pending') return sections.filter(s => s.status !== 'Evaluated');
+    // Pending: Not evaluated AND has a test sequence (not excluded)
+    if (filterType === 'pending') return sections.filter(s => s.status !== 'Evaluated' && (s.test_sequence && String(s.test_sequence).trim() !== ''));
     if (filterType === 'excluded') return sections.filter(s => !s.test_sequence || String(s.test_sequence).trim() === '');
     return sections;
   }, [sections, filterType]);
@@ -62,29 +63,40 @@ function AppContent() {
   const counts = useMemo(() => {
     const evaluated = sections.filter(s => s.status === 'Evaluated').length;
     const excluded = sections.filter(s => !s.test_sequence || String(s.test_sequence).trim() === '').length;
+    // Pending count should also exclude the "excluded" sections
+    const pending = sections.filter(s => s.status !== 'Evaluated' && (s.test_sequence && String(s.test_sequence).trim() !== '')).length;
     return {
       all: sections.length,
       evaluated,
-      pending: sections.length - evaluated,
+      pending,
       excluded
     };
   }, [sections]);
 
   const allTypes = useMemo(() => [...new Set(sections.map(s => s.type).filter(Boolean))], [sections]);
 
+  // Admin Check
+  const isAdmin = user?.email === 'samuel.alalade@ttu.edu';
+
   const handleChangeStatus = async (section, newStatus) => {
+    if (!isAdmin) return;
     const updated = { ...section, status: newStatus };
     await addSection(updated, user.username);
     loadSections();
   };
 
   const handleChangeType = async (section, newType) => {
+    if (!isAdmin) return;
     const updated = { ...section, type: newType };
     await addSection(updated, user.username);
     loadSections();
   };
 
   const handleDeleteSection = async (section) => {
+    if (!isAdmin) {
+      alert("Only administrators can delete sections.");
+      return;
+    }
     await deleteSection(section.id, user.username);
     if (selectedSection?.id === section.id) setSelectedSection(null);
     loadSections();
@@ -108,6 +120,7 @@ function AppContent() {
   };
 
   const handleEditSection = async (updatedSection) => {
+    if (!isAdmin) return;
     await addSection(updatedSection, user.username);
     setEditingSection(null);
     loadSections();
@@ -128,8 +141,8 @@ function AppContent() {
         sections={filteredSections}
         onSelectSection={(s) => { setSelectedSection(s); setCurrentView('dashboard'); if (window.innerWidth < 768) setSidebarCollapsed(true); }}
         selectedSectionId={selectedSection?.id}
-        onOpenImport={() => setIsImportModalOpen(true)}
-        onOpenManual={() => setIsManualModalOpen(true)}
+        onOpenImport={() => isAdmin && setIsImportModalOpen(true)}
+        onOpenManual={() => isAdmin && setIsManualModalOpen(true)}
         filterType={filterType}
         setFilterType={setFilterType}
         isCollapsed={sidebarCollapsed}
@@ -145,6 +158,7 @@ function AppContent() {
         allSections={sections}
         username={user?.username}
         onViewOnMap={handleViewOnMap}
+        isAdmin={isAdmin}
       />
 
       <main className="main-content">
@@ -170,9 +184,11 @@ function AppContent() {
                 loadSections();
               }}
               onRemoveFromRoute={handleRemoveFromRoute}
+              username={user?.username}
+              isAdmin={isAdmin}
             />
           ) : currentView === 'settings' ? (
-            <SettingsView onClose={() => setCurrentView('dashboard')} />
+            <SettingsView onClose={() => setCurrentView('dashboard')} isAdmin={isAdmin} />
           ) : (
             selectedSection ? (
               <SectionDetail
@@ -184,6 +200,7 @@ function AppContent() {
                 onDeleteSection={handleDeleteSection}
                 onEdit={(section) => setEditingSection(section)}
                 onViewOnMap={handleViewOnMap}
+                isAdmin={isAdmin}
               />
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-muted text-center p-8 border-2 border-dashed border-[hsl(var(--border))] rounded-lg">

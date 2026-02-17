@@ -15,8 +15,11 @@ const DetailEditor = ({ section }) => {
     const [lightboxSrc, setLightboxSrc] = useState(null); // For image popup
 
     const editorRef = useRef(null);
-    const fileInputRef = useRef(null);
+    const cameraInputRef = useRef(null);
+    const galleryInputRef = useRef(null);
     const mediaRecorderRef = useRef(null);
+    const recognitionRef = useRef(null);
+    const transcriptRef = useRef('');
     const chunksRef = useRef([]);
     const endOfListRef = useRef(null);
 
@@ -134,6 +137,40 @@ const DetailEditor = ({ section }) => {
     const startRecording = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+            // Initialize Speech Recognition if available
+            if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                recognitionRef.current = new SpeechRecognition();
+                recognitionRef.current.continuous = true;
+                recognitionRef.current.interimResults = true;
+                recognitionRef.current.lang = 'en-US';
+
+                transcriptRef.current = '';
+
+                recognitionRef.current.onresult = (event) => {
+                    let finalTranscript = '';
+                    for (let i = event.resultIndex; i < event.results.length; ++i) {
+                        if (event.results[i].isFinal) {
+                            finalTranscript += event.results[i][0].transcript + ' ';
+                        }
+                    }
+                    if (finalTranscript) {
+                        transcriptRef.current += finalTranscript;
+                    }
+                };
+
+                recognitionRef.current.onerror = (event) => {
+                    console.error("Speech recognition error", event.error);
+                };
+
+                try {
+                    recognitionRef.current.start();
+                } catch (e) {
+                    console.error("Failed to start recognition", e);
+                }
+            }
+
             // Use low bitrate for smaller recordings that fit in Firestore
             const options = { audioBitsPerSecond: 32000 };
             mediaRecorderRef.current = new MediaRecorder(stream, options);
@@ -144,10 +181,23 @@ const DetailEditor = ({ section }) => {
             };
 
             mediaRecorderRef.current.onstop = () => {
+                // Stop speech recognition if active
+                if (recognitionRef.current) {
+                    try {
+                        recognitionRef.current.stop();
+                    } catch (e) {
+                        // Ignore error if already stopped
+                    }
+                }
+
                 const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
                 const reader = new FileReader();
                 reader.onloadend = () => {
-                    const audioHtml = `<br/><audio controls src="${reader.result}" style="width: 80%; max-width: 100%; margin: 0.5rem 0;"></audio><br/>`;
+                    const transcriptHtml = transcriptRef.current.trim()
+                        ? `<details open style="margin-top: 0.5rem; border: 1px solid hsl(var(--border)); padding: 0.5rem; border-radius: 4px; background: hsl(var(--card));"><summary style="cursor: pointer; font-weight: bold; font-size: 0.8rem; color: hsl(var(--muted-foreground)); user-select: none;">Transcript</summary><div style="margin-top: 0.5rem; white-space: pre-wrap; font-size: 0.9rem; color: hsl(var(--foreground)); line-height: 1.5;">${transcriptRef.current}</div></details>`
+                        : '';
+
+                    const audioHtml = `<br/><div class="audio-note-container" style="border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 0.5rem; background: hsl(var(--card)); margin: 0.5rem 0;"><audio controls src="${reader.result}" style="width: 100%; margin-bottom: 0.5rem;"></audio>${transcriptHtml}</div><br/>`;
                     insertHtmlAtCursor(audioHtml);
                 };
                 reader.readAsDataURL(blob);
@@ -331,18 +381,36 @@ const DetailEditor = ({ section }) => {
                 {/* Toolbar */}
                 <div className="flex items-center justify-between p-2 bg-[hsl(var(--muted)/0.3)] border-t border-[hsl(var(--border))]">
                     <div className="flex gap-2 items-center">
+                        {/* Camera Input (Direct) */}
                         <input
                             type="file"
-                            ref={fileInputRef}
+                            ref={cameraInputRef}
                             accept="image/*"
-                            capture="environment" // Direct camera on mobile
+                            capture="environment"
                             className="hidden"
                             onChange={handleImageSelect}
                         />
+                        {/* Gallery Input (No Capture) */}
+                        <input
+                            type="file"
+                            ref={galleryInputRef}
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleImageSelect}
+                        />
+
                         <button
                             className="btn btn-ghost p-2 hover:bg-[hsl(var(--accent))]"
-                            title="Insert Image"
-                            onClick={() => fileInputRef.current?.click()}
+                            title="Take Photo"
+                            onClick={() => cameraInputRef.current?.click()}
+                        >
+                            <Camera size={18} />
+                        </button>
+
+                        <button
+                            className="btn btn-ghost p-2 hover:bg-[hsl(var(--accent))]"
+                            title="Upload from Gallery"
+                            onClick={() => galleryInputRef.current?.click()}
                         >
                             <LucideImage size={18} />
                         </button>

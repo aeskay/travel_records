@@ -3,7 +3,7 @@ import { useUser } from '../context/UserContext';
 import { getAllData, restoreData } from '../db';
 import { Moon, Sun, Download, Upload, LogOut, User, Edit2, Save, Trash2, X } from 'lucide-react';
 
-const SettingsView = ({ onClose }) => {
+const SettingsView = ({ onClose, isAdmin }) => {
     const { user, logout, updateUserProfile, deleteUserAccount } = useUser();
     const [isDark, setIsDark] = useState(document.documentElement.getAttribute('data-theme') !== 'light');
     const fileInputRef = useRef(null);
@@ -183,34 +183,36 @@ const SettingsView = ({ onClose }) => {
                 </div>
             </div>
 
-            <div className="card">
-                <h3 className="mb-4 text-lg font-medium">Data Management</h3>
+            {isAdmin && (
+                <div className="card">
+                    <h3 className="mb-4 text-lg font-medium">Data Management</h3>
 
-                <div className="space-y-4 divide-y divide-[hsl(var(--border))]">
-                    <div className="flex justify-between items-center py-2">
-                        <div>
-                            <strong className="block">Backup Data</strong>
-                            <span className="text-sm text-muted">Download a copy of your data</span>
-                        </div>
-                        <button onClick={handleBackup} className="btn btn-primary">
-                            <Download size={16} /> Download
-                        </button>
-                    </div>
-
-                    <div className="flex justify-between items-center pt-4">
-                        <div>
-                            <strong className="block">Restore Data</strong>
-                            <span className="text-sm text-muted">Import data from a backup file</span>
-                        </div>
-                        <div>
-                            <input type="file" ref={fileInputRef} accept=".json" className="hidden" onChange={handleRestore} />
-                            <button onClick={() => fileInputRef.current.click()} className="btn btn-outline">
-                                <Upload size={16} /> Upload
+                    <div className="space-y-4 divide-y divide-[hsl(var(--border))]">
+                        <div className="flex justify-between items-center py-2">
+                            <div>
+                                <strong className="block">Backup Data</strong>
+                                <span className="text-sm text-muted">Download a copy of your data</span>
+                            </div>
+                            <button onClick={handleBackup} className="btn btn-primary">
+                                <Download size={16} /> Download
                             </button>
+                        </div>
+
+                        <div className="flex justify-between items-center pt-4">
+                            <div>
+                                <strong className="block">Restore Data</strong>
+                                <span className="text-sm text-muted">Import data from a backup file</span>
+                            </div>
+                            <div>
+                                <input type="file" ref={fileInputRef} accept=".json" className="hidden" onChange={handleRestore} />
+                                <button onClick={() => fileInputRef.current.click()} className="btn btn-outline">
+                                    <Upload size={16} /> Upload
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            )}
 
             <div className="card">
                 <h3 className="mb-4 text-lg font-medium text-destructive">Danger Zone</h3>

@@ -23,7 +23,8 @@ const Sidebar = ({
     onEdit,
     allSections,
     username,
-    onViewOnMap
+    onViewOnMap,
+    isAdmin
 }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [expandedGroups, setExpandedGroups] = useState({});
@@ -140,6 +141,7 @@ const Sidebar = ({
                                                     onDelete={onDeleteSection}
                                                     onEdit={onEdit}
                                                     onViewOnMap={onViewOnMap}
+                                                    isAdmin={isAdmin}
                                                 />
                                             </div>
                                         ))}
