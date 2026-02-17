@@ -1,185 +1,214 @@
-import { useState, useMemo } from 'react';
-import { X, Save, Plus, List } from 'lucide-react';
-import { addSection } from '../db';
+import { useState } from 'react';
+import { X } from 'lucide-react';
 
 const ManualAddModal = ({ onClose, onComplete, existingTypes = [] }) => {
     const [formData, setFormData] = useState({
         id: '',
-        type: '',
         highway: '',
+        type: '',
         district: '',
-        county: '',
         city: '',
-        coordinates: ''
+        county: '',
+        coordinates: '',
+        testing_sn: ''
     });
+
     const [isNewType, setIsNewType] = useState(false);
+    const [newType, setNewType] = useState('');
+    const [errors, setErrors] = useState({});
 
-    const uniqueTypes = useMemo(() => {
-        return [...new Set(existingTypes)].filter(Boolean).sort();
-    }, [existingTypes]);
-
-    // Initialize type if not set and types exist
-    useMemo(() => {
-        if (!formData.type && uniqueTypes.length > 0) {
-            setFormData(prev => ({ ...prev, type: uniqueTypes[0] }));
-        }
-    }, [uniqueTypes]);
+    // Filter out duplicates and empty types
+    const uniqueTypes = [...new Set(existingTypes)].filter(t => t && t.trim() !== '');
 
     const handleChange = (e) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        setFormData(prev => ({
+            ...prev,
+            [name]: value
+        }));
+        if (errors[name]) {
+            setErrors(prev => ({ ...prev, [name]: null }));
+        }
     };
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        if (!formData.id) return alert('Section ID is required');
+    const handleTypeChange = (e) => {
+        const value = e.target.value;
+        if (value === '__new__') {
+            setIsNewType(true);
+            setFormData(prev => ({ ...prev, type: '' }));
+        } else {
+            setIsNewType(false);
+            setFormData(prev => ({ ...prev, type: value }));
+        }
+    };
 
-        const newSection = {
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        const newErrors = {};
+
+        if (!formData.id.trim()) newErrors.id = 'ID is required';
+        if (!formData.highway.trim()) newErrors.highway = 'Highway is required';
+
+        const finalType = isNewType ? newType.trim() : formData.type;
+        if (!finalType) newErrors.type = 'Type is required';
+
+        if (Object.keys(newErrors).length > 0) {
+            setErrors(newErrors);
+            return;
+        }
+
+        const sectionData = {
             ...formData,
-            id: String(formData.id),
-            status: 'pending' // Default status
+            type: finalType,
+            status: 'Not Evaluated', // Default status
+            details: {} // Init empty details
         };
 
-        try {
-            await addSection(newSection);
-            onComplete();
-        } catch (error) {
-            console.error('Failed to add section:', error);
-            alert('Failed to save section. ID might already exist.');
-        }
+        onComplete(sectionData);
     };
 
     return (
         <div className="modal-overlay">
-            <div className="modal-content fade-in" style={{ maxWidth: '500px' }}>
+            <div className="modal-content">
                 <div className="modal-header">
                     <h2>Add New Section</h2>
-                    <button className="btn btn-glass" onClick={onClose}><X size={20} /></button>
+                    <button className="btn-icon" onClick={onClose}><X size={20} /></button>
                 </div>
 
                 <form onSubmit={handleSubmit} className="modal-body">
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div className="grid-2">
                         <div className="form-group">
-                            <label className="info-label">Section ID *</label>
+                            <label className="text-sm font-semibold text-muted mb-1 block uppercase tracking-wider">Section ID <span className="text-red-500">*</span></label>
                             <input
                                 type="text"
                                 name="id"
+                                className="input"
                                 value={formData.id}
                                 onChange={handleChange}
-                                className="input-field"
-                                required
-                                placeholder="e.g. 101"
+                                placeholder="e.g., IH0035-A"
+                                autoFocus
+                            />
+                            {errors.id && <span className="text-xs text-red-500 mt-1 block">{errors.id}</span>}
+                        </div>
+                        <div className="form-group">
+                            <label className="text-sm font-semibold text-muted mb-1 block uppercase tracking-wider">Testing S/N</label>
+                            <input
+                                type="text"
+                                name="testing_sn"
+                                className="input"
+                                value={formData.testing_sn}
+                                onChange={handleChange}
+                                placeholder="Serial Number"
                             />
                         </div>
+                    </div>
 
-                        <div className="form-group">
-                            <label className="info-label">Type</label>
-                            <div className="flex gap-2">
-                                {isNewType ? (
-                                    <input
-                                        type="text"
-                                        name="type"
-                                        value={formData.type}
-                                        onChange={handleChange}
-                                        className="input-field header-input"
-                                        placeholder="Enter new type..."
-                                        autoFocus
-                                        style={{ flex: 1 }}
-                                    />
-                                ) : (
-                                    <select
-                                        name="type"
-                                        value={formData.type}
-                                        onChange={handleChange}
-                                        className="input-field" // Reuse input styles
-                                        style={{ flex: 1, appearance: 'auto' }}
-                                    >
-                                        <option value="" disabled>Select Type...</option>
-                                        {uniqueTypes.map(type => (
-                                            <option key={type} value={type}>{type}</option>
-                                        ))}
-                                    </select>
-                                )}
-                                <button
-                                    type="button"
-                                    className="btn btn-glass"
-                                    onClick={() => {
-                                        setIsNewType(!isNewType);
-                                        setFormData(prev => ({ ...prev, type: '' }));
-                                    }}
-                                    title={isNewType ? "Select Existing" : "Add New Type"}
-                                >
-                                    {isNewType ? <List size={18} /> : <Plus size={18} />}
-                                </button>
-                            </div>
-                        </div>
+                    <div className="h-px bg-[hsl(var(--border))] w-full my-4"></div>
 
+                    <div className="grid-2">
                         <div className="form-group">
-                            <label className="info-label">Highway</label>
+                            <label className="text-sm font-semibold text-muted mb-1 block uppercase tracking-wider">Highway <span className="text-red-500">*</span></label>
                             <input
                                 type="text"
                                 name="highway"
+                                className="input"
                                 value={formData.highway}
                                 onChange={handleChange}
-                                className="input-field"
-                                placeholder="e.g. IH 35"
+                                placeholder="e.g., IH-35"
                             />
-                        </div>
-
-                        <div className="grid-2">
-                            <div className="form-group">
-                                <label className="info-label">District</label>
-                                <input
-                                    type="text"
-                                    name="district"
-                                    value={formData.district}
-                                    onChange={handleChange}
-                                    className="input-field"
-                                />
-                            </div>
-                            <div className="form-group">
-                                <label className="info-label">County</label>
-                                <input
-                                    type="text"
-                                    name="county"
-                                    value={formData.county}
-                                    onChange={handleChange}
-                                    className="input-field"
-                                />
-                            </div>
+                            {errors.highway && <span className="text-xs text-red-500 mt-1 block">{errors.highway}</span>}
                         </div>
 
                         <div className="form-group">
-                            <label className="info-label">City</label>
+                            <label className="text-sm font-semibold text-muted mb-1 block uppercase tracking-wider">Type <span className="text-red-500">*</span></label>
+                            {!isNewType ? (
+                                <select
+                                    className="input"
+                                    value={formData.type || ''}
+                                    onChange={handleTypeChange}
+                                >
+                                    <option value="">Select Type...</option>
+                                    {uniqueTypes.map(t => (
+                                        <option key={t} value={t}>{t}</option>
+                                    ))}
+                                    <option value="__new__">+ Add New Type</option>
+                                </select>
+                            ) : (
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        className="input"
+                                        value={newType}
+                                        onChange={(e) => setNewType(e.target.value)}
+                                        placeholder="Enter new type"
+                                        autoFocus
+                                    />
+                                    <button
+                                        type="button"
+                                        className="btn"
+                                        onClick={() => setIsNewType(false)}
+                                    >Cancel</button>
+                                </div>
+                            )}
+                            {errors.type && <span className="text-xs text-red-500 mt-1 block">{errors.type}</span>}
+                        </div>
+                    </div>
+
+                    <div className="grid-2 mt-4">
+                        <div className="form-group">
+                            <label className="text-sm font-semibold text-muted mb-1 block uppercase tracking-wider">District</label>
+                            <input
+                                type="text"
+                                name="district"
+                                className="input"
+                                value={formData.district}
+                                onChange={handleChange}
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label className="text-sm font-semibold text-muted mb-1 block uppercase tracking-wider">GPS Coordinates</label>
+                            <div className="relative">
+                                <input
+                                    type="text"
+                                    name="coordinates"
+                                    className="input font-mono"
+                                    value={formData.coordinates}
+                                    onChange={handleChange}
+                                    placeholder="Lat, Long"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="grid-2 mt-4">
+                        <div className="form-group">
+                            <label className="text-sm font-semibold text-muted mb-1 block uppercase tracking-wider">City</label>
                             <input
                                 type="text"
                                 name="city"
+                                className="input"
                                 value={formData.city}
                                 onChange={handleChange}
-                                className="input-field"
                             />
                         </div>
-
                         <div className="form-group">
-                            <label className="info-label">GPS Coordinates</label>
+                            <label className="text-sm font-semibold text-muted mb-1 block uppercase tracking-wider">County</label>
                             <input
                                 type="text"
-                                name="coordinates"
-                                value={formData.coordinates}
+                                name="county"
+                                className="input"
+                                value={formData.county}
                                 onChange={handleChange}
-                                className="input-field"
-                                placeholder="Lat, Lon"
                             />
                         </div>
                     </div>
 
-                    <div className="modal-footer" style={{ marginTop: '2rem' }}>
-                        <button type="button" onClick={onClose} className="btn btn-glass">Cancel</button>
-                        <button type="submit" className="btn btn-primary">
-                            <Save size={18} /> Save Section
-                        </button>
-                    </div>
                 </form>
+
+                <div className="modal-footer">
+                    <button className="btn" onClick={onClose}>Cancel</button>
+                    <button className="btn btn-primary" onClick={handleSubmit}>Add Section</button>
+                </div>
             </div>
         </div>
     );

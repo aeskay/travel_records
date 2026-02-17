@@ -1,9 +1,11 @@
 import { useState, useRef } from 'react';
-import { Upload, AlertTriangle, X, Check } from 'lucide-react';
+import { Upload, AlertTriangle, X, Check, GitMerge } from 'lucide-react';
 import { parseCSV, analyzeImport } from '../utils/csvImporter';
 import { addSections } from '../db';
+import { useUser } from '../context/UserContext';
 
 const ImportModal = ({ onClose, onImportComplete }) => {
+    const { user } = useUser();
     const [report, setReport] = useState(null);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [toggledDuplicates, setToggledDuplicates] = useState(new Set());
@@ -16,7 +18,7 @@ const ImportModal = ({ onClose, onImportComplete }) => {
         setIsAnalyzing(true);
         try {
             const parsed = await parseCSV(selectedFile);
-            const analysis = await analyzeImport(parsed);
+            const analysis = await analyzeImport(parsed, user?.username);
             setReport(analysis);
         } catch (err) {
             console.error(err);
@@ -35,13 +37,40 @@ const ImportModal = ({ onClose, onImportComplete }) => {
 
     const handleImport = async () => {
         if (!report) return;
-        const sectionsToImport = [...report.newOrUpdates];
-        report.duplicates.forEach((dup, idx) => {
-            if (toggledDuplicates.has(idx)) sectionsToImport.push(dup.newSection);
-        });
-        await addSections(sectionsToImport);
-        onImportComplete();
+
+        try {
+            if (!user) throw new Error("User not authenticated");
+
+            // 1. Import brand new sections (full write)
+            if (report.newOrUpdates.length > 0) {
+                await addSections(report.newOrUpdates, user.username);
+            }
+
+            // 2. Merge sections with new fields (merge mode — appends, doesn't overwrite)
+            if (report.mergeable.length > 0) {
+                const mergeData = report.mergeable.map(m => m.newSection);
+                await addSections(mergeData, user.username, { merge: true });
+            }
+
+            // 3. Force-import any toggled duplicates
+            const forcedDuplicates = [];
+            report.duplicates.forEach((dup, idx) => {
+                if (toggledDuplicates.has(idx)) {
+                    forcedDuplicates.push(dup.newSection);
+                }
+            });
+            if (forcedDuplicates.length > 0) {
+                await addSections(forcedDuplicates, user.username);
+            }
+
+            onImportComplete();
+        } catch (err) {
+            console.error("Import error details:", err);
+            alert("Import failed: " + err.message);
+        }
     };
+
+    const totalImportCount = (report?.newOrUpdates.length || 0) + (report?.mergeable.length || 0) + toggledDuplicates.size;
 
     return (
         <div className="modal-overlay">
@@ -74,24 +103,53 @@ const ImportModal = ({ onClose, onImportComplete }) => {
                                     <div className="stat-value">{report.newOrUpdates.length}</div>
                                     <div className="stat-label">New</div>
                                 </div>
+                                <div className="stat-card" style={{ borderLeft: '3px solid #3b82f6' }}>
+                                    <div className="stat-value">{report.mergeable.length}</div>
+                                    <div className="stat-label">Merge</div>
+                                </div>
                                 <div className="stat-card conflict">
                                     <div className="stat-value">{report.duplicates.length}</div>
-                                    <div className="stat-label">Conflicts</div>
+                                    <div className="stat-label">Skipped</div>
                                 </div>
                             </div>
 
+                            {/* Mergeable sections */}
+                            {report.mergeable.length > 0 && (
+                                <div style={{ marginTop: '1rem' }}>
+                                    <h3 style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '0.5rem' }}>
+                                        <GitMerge size={16} color="#3b82f6" /> Auto-merge ({report.mergeable.length})
+                                    </h3>
+                                    <p style={{ fontSize: '0.8rem', color: 'hsl(var(--muted-foreground))', marginBottom: '0.5rem' }}>
+                                        These sections already exist but have new fields that will be appended.
+                                    </p>
+                                    <div className="conflict-list" style={{ maxHeight: '150px', overflowY: 'auto' }}>
+                                        {report.mergeable.map((m, idx) => (
+                                            <div key={idx} className="conflict-item" style={{ padding: '0.5rem 0.75rem' }}>
+                                                <div>
+                                                    <strong>#{m.newSection.id}</strong>
+                                                    <span style={{ fontSize: '0.75rem', color: '#3b82f6', marginLeft: '8px' }}>
+                                                        + {m.fieldNames.join(', ')}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* True duplicates */}
                             {report.duplicates.length > 0 && (
-                                <div>
-                                    <h3><AlertTriangle size={16} color="#f59e0b" /> Conflicts</h3>
+                                <div style={{ marginTop: '1rem' }}>
+                                    <h3><AlertTriangle size={16} color="#f59e0b" /> Skipped ({report.duplicates.length})</h3>
+                                    <p style={{ fontSize: '0.8rem', color: 'hsl(var(--muted-foreground))', marginBottom: '0.5rem' }}>
+                                        Identical data, no changes needed. Check to force re-import.
+                                    </p>
                                     <div className="conflict-list">
                                         {report.duplicates.map((dup, idx) => (
                                             <label key={idx} className="conflict-item">
                                                 <input type="checkbox" checked={toggledDuplicates.has(idx)} onChange={() => toggleDuplicate(idx)} />
                                                 <div>
                                                     <strong>#{dup.newSection.id}</strong> - {dup.reason}
-                                                    <div style={{ fontSize: '0.75rem', color: 'gray' }}>
-                                                        New: {dup.newSection.coordinates} / Old: {dup.existingSection?.coordinates}
-                                                    </div>
                                                 </div>
                                             </label>
                                         ))}
@@ -105,8 +163,8 @@ const ImportModal = ({ onClose, onImportComplete }) => {
                 <div className="modal-footer">
                     <button onClick={onClose} className="btn btn-glass">Cancel</button>
                     {report && (
-                        <button onClick={handleImport} className="btn btn-primary">
-                            <Check size={18} /> Import {report.newOrUpdates.length + toggledDuplicates.size}
+                        <button onClick={handleImport} className="btn btn-primary" disabled={totalImportCount === 0}>
+                            <Check size={18} /> Import {totalImportCount}
                         </button>
                     )}
                 </div>

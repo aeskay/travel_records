@@ -1,5 +1,7 @@
 import { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Upload, Plus, Filter, Search, ChevronDown, ChevronUp, CheckCircle, Circle, Settings as SettingsIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Upload, Plus, Search, ChevronDown, ChevronUp, CheckCircle, Settings as SettingsIcon, Printer, MapPinned } from 'lucide-react';
+import SectionActionMenu from './SectionActionMenu';
+import { printSections } from '../utils/printUtils';
 
 const Sidebar = ({
     sections,
@@ -12,16 +14,20 @@ const Sidebar = ({
     isCollapsed,
     toggleSidebar,
     counts,
-    onOpenSettings
+    onOpenSettings,
+    allTypes,
+    onChangeStatus,
+    onChangeType,
+    onDeleteSection,
+    onEdit,
+    allSections,
+    username
 }) => {
     const [searchTerm, setSearchTerm] = useState('');
-    const [expandedGroups, setExpandedGroups] = useState({}); // Track expanded groups
+    const [expandedGroups, setExpandedGroups] = useState({});
 
     const toggleGroup = (type) => {
-        setExpandedGroups(prev => ({
-            ...prev,
-            [type]: !prev[type]
-        }));
+        setExpandedGroups(prev => ({ ...prev, [type]: !prev[type] }));
     };
 
     const groupedSections = useMemo(() => {
@@ -42,94 +48,96 @@ const Sidebar = ({
     }, [sections, searchTerm]);
 
     return (
-        <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
+        <aside className={`sidebar ${isCollapsed ? 'collapsed' : 'open'}`}>
             {/* Header */}
-            <div className="sidebar-header">
-                <div className="sidebar-title">
-                    <h2>Section Info</h2>
-                    <button onClick={toggleSidebar} className="btn-icon">
-                        {isCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
-                    </button>
-                </div>
-
-                {!isCollapsed && (
-                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-                        <button className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={onOpenImport}>
-                            <Upload size={16} /> Import
-                        </button>
-                        <button className="btn btn-glass" style={{ justifyContent: 'center' }} onClick={onOpenManual} title="Add Manually">
-                            <Plus size={16} />
-                        </button>
-                    </div>
-                )}
+            <div className="sidebar-header flex justify-between items-center">
+                <h2 className="text-lg font-bold">0-7147: Travel Records</h2>
+                <button onClick={toggleSidebar} className="btn-icon">
+                    {isCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
+                </button>
             </div>
 
             {!isCollapsed && (
                 <>
-                    {/* Search */}
-                    <div className="sidebar-search">
-                        <Search size={16} color="var(--color-text-secondary)" />
-                        <input
-                            type="text"
-                            placeholder="Search ID, Type, City..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
+                    <div className="p-4 flex flex-col gap-4 border-b border-[hsl(var(--border))]">
+                        {/* Actions */}
+                        <div className="flex gap-2">
+                            <button className="btn btn-primary w-full" onClick={onOpenImport}>
+                                <Upload size={16} /> Import
+                            </button>
+                            <button className="btn btn-outline w-full" onClick={onOpenManual}>
+                                <Plus size={16} /> Add
+                            </button>
+                        </div>
+
+                        {/* Search */}
+                        <div className="relative">
+                            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" style={{ top: '50%', transform: 'translateY(-50%)', marginLeft: '10px' }} />
+                            <input
+                                type="text"
+                                className="input pl-9"
+                                style={{ paddingLeft: '2.25rem' }}
+                                placeholder="Search..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                        </div>
+
+                        {/* Filter Tabs */}
+                        <div className="sidebar-tabs">
+                            {['all', 'evaluated', 'pending'].map(type => (
+                                <button
+                                    key={type}
+                                    onClick={() => setFilterType(type)}
+                                    className={`tab-btn ${filterType === type ? 'active' : ''}`}
+                                >
+                                    {type.charAt(0).toUpperCase() + type.slice(1)} ({counts[type]})
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
-                    {/* Tabs / Filters */}
-                    <div className="sidebar-tabs">
-                        <button
-                            className={`tab-btn ${filterType === 'all' ? 'active' : ''}`}
-                            onClick={() => setFilterType('all')}
-                        >
-                            All <span className="badge">{counts.all}</span>
-                        </button>
-                        <button
-                            className={`tab-btn ${filterType === 'evaluated' ? 'active' : ''}`}
-                            onClick={() => setFilterType('evaluated')}
-                        >
-                            Evaluated <span className="badge">{counts.evaluated}</span>
-                        </button>
-                        <button
-                            className={`tab-btn ${filterType === 'remaining' ? 'active' : ''}`} // Keep class name for styling
-                            onClick={() => setFilterType('remaining')}
-                        >
-                            Not Evaluated <span className="badge">{counts.remaining}</span>
-                        </button>
-                    </div>
-
-                    <div className="sidebar-divider"></div>
-
-                    {/* List */}
-                    <div className="sidebar-content">
+                    {/* Scrollable Content */}
+                    <div className="sidebar-scroll">
                         {Object.keys(groupedSections).sort().map(type => (
                             <div key={type} className="section-group">
                                 <div
                                     className="group-header"
                                     onClick={() => toggleGroup(type)}
                                 >
-                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--color-text-primary)' }}>{type}</span>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                        <span className="badge" style={{ background: 'var(--color-background-elevated)' }}>{groupedSections[type].length}</span>
+                                    <span className="group-title">{type}</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="badge">{groupedSections[type].length}</span>
                                         {expandedGroups[type] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                                     </div>
                                 </div>
+
                                 {expandedGroups[type] && (
-                                    <div className="group-content">
+                                    <div className="mt-1 flex flex-col gap-1 pl-2">
                                         {groupedSections[type].map(section => (
                                             <div
                                                 key={section.id}
                                                 className={`section-item ${selectedSectionId === section.id ? 'active' : ''}`}
                                                 onClick={() => onSelectSection(section)}
+                                                style={{ flexDirection: 'row', alignItems: 'center' }}
                                             >
-                                                <div className="section-info">
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                                                <div className="section-info" style={{ flex: 1, minWidth: 0 }}>
+                                                    <div className="section-title-row">
                                                         <span className="section-id">{section.id}</span>
-                                                        {section.status === 'Evaluated' && <CheckCircle size={14} color="var(--color-success)" />}
+                                                        {section.status === 'Evaluated' && <CheckCircle size={14} color="hsl(var(--primary))" />}
                                                     </div>
-                                                    <span className="section-subtitle">{section.city || 'No City'} • {section.county || 'No County'}</span>
+                                                    <span className="section-subtitle">
+                                                        {section.city || 'No City'} • {section.county || 'No County'}
+                                                    </span>
                                                 </div>
+                                                <SectionActionMenu
+                                                    section={section}
+                                                    allTypes={allTypes}
+                                                    onChangeStatus={onChangeStatus}
+                                                    onChangeType={onChangeType}
+                                                    onDelete={onDeleteSection}
+                                                    onEdit={onEdit}
+                                                />
                                             </div>
                                         ))}
                                     </div>
@@ -138,14 +146,45 @@ const Sidebar = ({
                         ))}
                     </div>
 
-                    {/* Footer / Settings */}
-                    <div className="sidebar-footer" style={{ padding: '1rem', borderTop: '1px solid var(--color-border)' }}>
+                    {/* Footer */}
+                    <div className="sidebar-footer" style={{ display: 'flex', justifyContent: 'space-around', padding: '0.75rem 0.5rem' }}>
+                        <button
+                            onClick={() => {
+                                // Sort by test_sequence, exclude sections without sequence or coordinates
+                                const ordered = (allSections || [])
+                                    .filter(s => s.coordinates && s.test_sequence && String(s.test_sequence).trim() !== '')
+                                    .sort((a, b) => Number(a.test_sequence) - Number(b.test_sequence));
+                                const coords = ordered.map(s => s.coordinates);
+                                if (coords.length === 0) { alert('No sections with test sequences and coordinates found.'); return; }
+                                const origin = coords[0];
+                                const dest = coords[coords.length - 1];
+                                const waypoints = coords.slice(1, -1).join('|');
+                                const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(dest)}&waypoints=${encodeURIComponent(waypoints)}`;
+                                window.open(url, '_blank');
+                            }}
+                            className="btn btn-ghost"
+                            style={{ flexDirection: 'column', gap: '4px', padding: '0.5rem', fontSize: '0.7rem', minWidth: '60px' }}
+                            title="View trip on map"
+                        >
+                            <MapPinned size={20} />
+                            <span>Trip Map</span>
+                        </button>
+                        <button
+                            onClick={() => printSections(allSections || [], username)}
+                            className="btn btn-ghost"
+                            style={{ flexDirection: 'column', gap: '4px', padding: '0.5rem', fontSize: '0.7rem', minWidth: '60px' }}
+                            title="Print all sections to PDF"
+                        >
+                            <Printer size={20} />
+                            <span>Print All</span>
+                        </button>
                         <button
                             onClick={onOpenSettings}
-                            className="btn btn-glass"
-                            style={{ width: '100%', justifyContent: 'center' }}
+                            className="btn btn-ghost"
+                            style={{ flexDirection: 'column', gap: '4px', padding: '0.5rem', fontSize: '0.7rem', minWidth: '60px' }}
                         >
-                            <SettingsIcon size={18} /> Settings
+                            <SettingsIcon size={20} />
+                            <span>Settings</span>
                         </button>
                     </div>
                 </>

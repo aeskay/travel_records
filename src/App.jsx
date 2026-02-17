@@ -1,13 +1,16 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Menu } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import SectionDetail from './components/SectionDetail';
 import ImportModal from './components/ImportModal';
 import ManualAddModal from './components/ManualAddModal';
 import LoginScreen from './components/LoginScreen';
 import SettingsView from './components/SettingsView';
-import { getSections, addSections, addSection, getDetails, addDetail } from './db';
+import EditSectionModal from './components/EditSectionModal';
+import { getSections, addSections, addSection, deleteSection } from './db';
 import { parseCSV } from './utils/csvImporter';
 import { UserProvider, useUser } from './context/UserContext';
+import './index.css';
 import './styles/App.css';
 
 function AppContent() {
@@ -16,9 +19,10 @@ function AppContent() {
   const [selectedSection, setSelectedSection] = useState(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
-  const [filterType, setFilterType] = useState('all'); // all, evaluated, remaining
-  const [currentView, setCurrentView] = useState('dashboard'); // dashboard, settings
+  const [filterType, setFilterType] = useState('all');
+  const [currentView, setCurrentView] = useState('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(window.innerWidth < 768);
+  const [editingSection, setEditingSection] = useState(null);
 
   const loadSections = useCallback(async () => {
     if (!user) return;
@@ -32,22 +36,24 @@ function AppContent() {
     }
   }, [user, loadSections]);
 
-  const handleImport = async (file) => {
-    if (!user) return;
-    try {
-      const parsedData = await parseCSV(file);
-      await addSections(parsedData.sections, user.username);
-      loadSections();
-      setIsImportModalOpen(false);
-    } catch (error) {
-      console.error("Import failed:", error);
-      alert("Import failed: " + error.message);
+  // Sync selectedSection with sections state to reflect updates (like status changes)
+  useEffect(() => {
+    if (selectedSection) {
+      const updated = sections.find(s => s.id === selectedSection.id);
+      if (updated && updated !== selectedSection) {
+        setSelectedSection(updated);
+      }
     }
+  }, [sections]);
+
+  const handleImportComplete = () => {
+    loadSections();
+    setIsImportModalOpen(false);
   };
 
   const filteredSections = useMemo(() => {
     if (filterType === 'evaluated') return sections.filter(s => s.status === 'Evaluated');
-    if (filterType === 'remaining') return sections.filter(s => s.status !== 'Evaluated');
+    if (filterType === 'pending') return sections.filter(s => s.status !== 'Evaluated');
     return sections;
   }, [sections, filterType]);
 
@@ -56,11 +62,37 @@ function AppContent() {
     return {
       all: sections.length,
       evaluated,
-      remaining: sections.length - evaluated
+      pending: sections.length - evaluated
     };
   }, [sections]);
 
-  if (loading) return <div className="loading-screen">Loading...</div>;
+  const allTypes = useMemo(() => [...new Set(sections.map(s => s.type).filter(Boolean))], [sections]);
+
+  const handleChangeStatus = async (section, newStatus) => {
+    const updated = { ...section, status: newStatus };
+    await addSection(updated, user.username);
+    loadSections();
+  };
+
+  const handleChangeType = async (section, newType) => {
+    const updated = { ...section, type: newType };
+    await addSection(updated, user.username);
+    loadSections();
+  };
+
+  const handleDeleteSection = async (section) => {
+    await deleteSection(section.id, user.username);
+    if (selectedSection?.id === section.id) setSelectedSection(null);
+    loadSections();
+  };
+
+  const handleEditSection = async (updatedSection) => {
+    await addSection(updatedSection, user.username);
+    setEditingSection(null);
+    loadSections();
+  };
+
+  if (loading) return <div className="flex h-screen items-center justify-center text-muted">Loading...</div>;
   if (!user) return <LoginScreen />;
 
   return (
@@ -77,30 +109,54 @@ function AppContent() {
         toggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
         counts={counts}
         onOpenSettings={() => setCurrentView('settings')}
+        allTypes={allTypes}
+        onChangeStatus={handleChangeStatus}
+        onChangeType={handleChangeType}
+        onDeleteSection={handleDeleteSection}
+        onEdit={(section) => setEditingSection(section)}
+        allSections={sections}
+        username={user?.username}
       />
 
       <main className="main-content">
-        {currentView === 'settings' ? (
-          <SettingsView onClose={() => setCurrentView('dashboard')} />
-        ) : (
-          selectedSection ? (
-            <SectionDetail
-              section={selectedSection}
-              onStatusChange={() => loadSections()}
-            />
+        <div className="mobile-header">
+          <button
+            className="btn-icon"
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          >
+            <Menu size={24} />
+          </button>
+          <span className="font-bold text-lg">0-7147: Travel Records</span>
+        </div>
+
+        <div className="h-full overflow-y-auto">
+          {currentView === 'settings' ? (
+            <SettingsView onClose={() => setCurrentView('dashboard')} />
           ) : (
-            <div className="empty-state">
-              <h2>Select a Section</h2>
-              <p>Choose a section from the sidebar to view details.</p>
-            </div>
-          )
-        )}
+            selectedSection ? (
+              <SectionDetail
+                section={selectedSection}
+                onUpdate={() => loadSections()}
+                allTypes={allTypes}
+                onChangeStatus={handleChangeStatus}
+                onChangeType={handleChangeType}
+                onDeleteSection={handleDeleteSection}
+                onEdit={(section) => setEditingSection(section)}
+              />
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-muted text-center p-8 border-2 border-dashed border-[hsl(var(--border))] rounded-lg">
+                <h2 className="text-xl font-bold mb-2 text-[hsl(var(--foreground))]">Select a Section</h2>
+                <p>Choose a section from the sidebar to view details.</p>
+              </div>
+            )
+          )}
+        </div>
       </main>
 
       {isImportModalOpen && (
         <ImportModal
           onClose={() => setIsImportModalOpen(false)}
-          onImport={handleImport}
+          onImportComplete={handleImportComplete}
         />
       )}
 
@@ -113,6 +169,14 @@ function AppContent() {
             setIsManualModalOpen(false);
           }}
           existingTypes={sections.map(s => s.type)}
+        />
+      )}
+
+      {editingSection && (
+        <EditSectionModal
+          section={editingSection}
+          onClose={() => setEditingSection(null)}
+          onSave={handleEditSection}
         />
       )}
     </div>

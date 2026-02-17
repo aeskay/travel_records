@@ -1,94 +1,108 @@
-import { openDB } from 'idb';
+import { db } from './firebase';
+import {
+    collection,
+    getDocs,
+    doc,
+    setDoc,
+    addDoc,
+    deleteDoc,
+    updateDoc,
+    query,
+    where,
+    orderBy,
+    writeBatch
+} from 'firebase/firestore';
 
-const getDBName = (username) => username ? `section-db-${username}` : 'section-info-db';
-const DB_VERSION = 1;
+// Collection refs
+const sectionsRef = collection(db, 'sections');
+const detailsRef = collection(db, 'details');
 
-export const initDB = async (username) => {
-    return openDB(getDBName(username), DB_VERSION, {
-        upgrade(db) {
-            // Store for sections
-            if (!db.objectStoreNames.contains('sections')) {
-                const sectionStore = db.createObjectStore('sections', { keyPath: 'id' });
-                sectionStore.createIndex('type', 'type');
-                sectionStore.createIndex('coordinates', 'coordinates');
-            }
-
-            // Store for details/notes
-            if (!db.objectStoreNames.contains('details')) {
-                const detailStore = db.createObjectStore('details', { keyPath: 'id', autoIncrement: true });
-                detailStore.createIndex('sectionId', 'sectionId');
-                detailStore.createIndex('timestamp', 'timestamp');
-            }
-        },
-    });
-};
+// Helper to snapshot to array
+const snapToData = (snap) => snap.docs.map(d => ({ ...d.data(), id: d.id }));
 
 export const getSections = async (username) => {
-    const db = await initDB(username);
-    return db.getAll('sections');
+    // In shared mode, we ignore username and return all sections.
+    // If you wanted private sections, you'd add: where('username', '==', username)
+    const q = query(sectionsRef, orderBy('id'));
+    const snap = await getDocs(q);
+    return snapToData(snap);
 };
 
 export const addSection = async (section, username) => {
-    const db = await initDB(username);
-    return db.put('sections', section);
+    // We use the Section ID as the document ID for easy lookup/deduplication
+    await setDoc(doc(sectionsRef, section.id), { ...section, lastModifiedBy: username || 'anon' });
 };
 
-export const addSections = async (sections, username) => {
-    const db = await initDB(username);
-    const tx = db.transaction('sections', 'readwrite');
-    const store = tx.objectStore('sections');
+export const addSections = async (sections, username, { merge = false } = {}) => {
+    // Firestore allows batches of up to 500 ops.
+    const batch = writeBatch(db);
+    let count = 0;
+
     for (const section of sections) {
-        await store.put(section);
+        const docRef = doc(sectionsRef, section.id);
+        const data = { ...section, lastModifiedBy: username || 'anon' };
+        if (merge) {
+            batch.set(docRef, data, { merge: true });
+        } else {
+            batch.set(docRef, data);
+        }
+        count++;
+        if (count >= 400) {
+            await batch.commit();
+            count = 0;
+        }
     }
-    await tx.done;
+    if (count > 0) await batch.commit();
 };
 
 export const getDetails = async (sectionId, username) => {
-    const db = await initDB(username);
-    return db.getAllFromIndex('details', 'sectionId', sectionId);
+    const q = query(
+        detailsRef,
+        where('sectionId', '==', sectionId),
+        // orderBy('timestamp', 'asc') // Requires an index in Firestore usually
+    );
+    const snap = await getDocs(q);
+    // Sort manually to avoid index creation delay for the user right now
+    const data = snapToData(snap);
+    return data.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 };
 
 export const addDetail = async (detail, username) => {
-    const db = await initDB(username);
-    return db.add('details', detail);
-};
-
-export const clearSections = async (username) => {
-    const db = await initDB(username);
-    const tx = db.transaction(['sections', 'details'], 'readwrite');
-    await tx.objectStore('sections').clear();
-    await tx.objectStore('details').clear();
-    await tx.done;
+    await addDoc(detailsRef, detail);
 };
 
 export const updateDetail = async (detail, username) => {
-    const db = await initDB(username);
-    return db.put('details', detail);
+    const { id, ...data } = detail;
+    await updateDoc(doc(detailsRef, id), data);
 };
 
 export const deleteDetail = async (id, username) => {
-    const db = await initDB(username);
-    return db.delete('details', id);
+    await deleteDoc(doc(detailsRef, id));
+};
+
+export const deleteSection = async (sectionId, username) => {
+    await deleteDoc(doc(sectionsRef, sectionId));
+};
+
+export const clearSections = async (username) => {
+    console.warn("clearSections not fully implemented for Firestore shared DB to prevent accidental data loss.");
 };
 
 export const getAllData = async (username) => {
-    const db = await initDB(username);
-    const sections = await db.getAll('sections');
-    const details = await db.getAll('details');
-    return { sections, details };
+    const sectionsSnap = await getDocs(sectionsRef);
+    const detailsSnap = await getDocs(detailsRef);
+    return {
+        sections: snapToData(sectionsSnap),
+        details: snapToData(detailsSnap)
+    };
 };
 
 export const restoreData = async (data, username) => {
-    const db = await initDB(username);
-    const tx = db.transaction(['sections', 'details'], 'readwrite');
-    await tx.objectStore('sections').clear();
-    await tx.objectStore('details').clear();
-
-    if (data.sections) {
-        for (const s of data.sections) await tx.objectStore('sections').put(s);
-    }
+    // Careful with this!
+    if (data.sections) await addSections(data.sections, username);
     if (data.details) {
-        for (const d of data.details) await tx.objectStore('details').put(d);
+        for (const d of data.details) {
+            await addDetail(d, username);
+        }
     }
-    await tx.done;
 };
