@@ -1,0 +1,87 @@
+# Implementation Plan - Section Information PWA Enhancements
+
+# Goal Description
+Enhance the existing PWA by adding manual data entry capabilities, fixing UI/UX issues (styling, dark mode, sidebar layout), and resolving data mapping bugs ("Section Type") and potential crashes.
+
+## User Review Required
+> [!IMPORTANT]
+> - Dark mode will be enforced globally, overriding system preferences.
+> - The "Radio Button" in the sidebar will be replaced with a more subtle status indicator or removed if deemed unnecessary.
+
+## Proposed Changes
+
+### Styling & UI
+#### [MODIFY] [index.css](file:///c:/Users/CEConc/Downloads/app/src/index.css)
+- Force dark mode variables.
+- Improve color palette (Premium Dark/Glassmorphism).
+
+#### [MODIFY] [App.css](file:///c:/Users/CEConc/Downloads/app/src/styles/App.css)
+- Adjust Sidebar spacing (reduce gaps).
+- Re-style Sidebar items (remove "radio button", maybe use a border-left indicator for status).
+- Improve "Section Detail" layout.
+
+### Data & Logic
+#### [MODIFY] [ImportModal.jsx](file:///c:/Users/CEConc/Downloads/app/src/components/ImportModal.jsx)
+- Ensure "Section Type" column from CSV is mapped to `type` property in the data model.
+
+#### [MODIFY] [App.jsx](file:///c:/Users/CEConc/Downloads/app/src/App.jsx)
+- Add state/UI for "Add New" menu (Dropdown: "Import CSV", "add Manual").
+- Handle "Add Manual" action.
+
+#### [NEW] [ManualAddModal.jsx](file:///c:/Users/CEConc/Downloads/app/src/components/ManualAddModal.jsx)
+- Form to add a new section manually.
+- Fields: ID, Highway, Section Type, Limits, etc.
+
+### Bug Fixes
+#### [MODIFY] [SectionDetail.jsx](file:///c:/Users/CEConc/Downloads/app/src/components/SectionDetail.jsx)
+- Add error boundaries or checks to prevent blank screen if data is missing.
+- Debug why it might be crashing (likely helper components).
+
+#### [MODIFY] [DetailEditor.jsx](file:///c:/Users/CEConc/Downloads/app/src/components/DetailEditor.jsx)
+- Ensure it handles missing ID or fresh sections gracefully.
+
+## User Feedback Round 2 (Current)
+- **Dark Mode**: Not active. (Fix: Ensure [html](file:///c:/Users/CEConc/Downloads/app/index.html) has background, remove any conflicting light mode styles).
+- **Uncategorized**: Persists. (Fix: Strict check CSV headers, maybe user needs to re-import. Will add logic to auto-clean headers).
+- **UI**: No left margin, no dividers. (Fix: Add padding/margin to `main-content`, increase divider contrast).
+- **Crash**: Application shows blank screen on section click. (Fix: Add ErrorBoundary or defensive checks in [SectionDetail](file:///c:/Users/CEConc/Downloads/app/src/components/SectionDetail.jsx#6-80)).
+- **Dropdown**: Jumps position. (Fix: Ensure parent is `relative`, adjust absolute position).
+- **Manual Add**: "Type" should be a dropdown of existing types + "Add New".
+- **Rename**: "Remaining" -> "Not Evaluated".
+
+## Proposed Changes
+
+### Styling
+#### [MODIFY] [index.css](file:///c:/Users/CEConc/Downloads/app/src/index.css)
+- Ensure `:root` applies variables correctly.
+- Set `html { background-color: ... }`.
+
+#### [MODIFY] [App.css](file:///c:/Users/CEConc/Downloads/app/src/styles/App.css)
+- Fix Margins for `.main-content`.
+- Increase visibility of `.section-item` borders.
+- Fix `.dropdown-menu` positioning.
+
+### Logic & Features
+#### [MODIFY] [SectionDetail.jsx](file:///c:/Users/CEConc/Downloads/app/src/components/SectionDetail.jsx)
+- Audit for crash risks (undefined properties, icon renders).
+- Add error boundary (simple try/catch in render or safety checks).
+
+#### [MODIFY] [ManualAddModal.jsx](file:///c:/Users/CEConc/Downloads/app/src/components/ManualAddModal.jsx)
+- Change "Type" input to a Select + "Add New" toggle.
+- Fetch unique types from existing sections.
+
+#### [MODIFY] [App.jsx](file:///c:/Users/CEConc/Downloads/app/src/App.jsx)
+- Pass existing sections/types to [ManualAddModal](file:///c:/Users/CEConc/Downloads/app/src/components/ManualAddModal.jsx#5-151).
+- Rename "Remaining" tab to "Not Evaluated".
+
+#### [MODIFY] [Sidebar.jsx](file:///c:/Users/CEConc/Downloads/app/src/components/Sidebar.jsx)
+- Rename "Remaining" tab to "Not Evaluated".
+
+#### [MODIFY] [utils/csvImporter.js](file:///c:/Users/CEConc/Downloads/app/src/utils/csvImporter.js)
+- Debug header mapping. Add normalization (trim, lowercase check).
+
+### Bug Fixes
+#### [MODIFY] [DetailEditor.jsx](file:///c:/Users/CEConc/Downloads/app/src/components/DetailEditor.jsx)
+- Ensure it doesn't crash if `sectionId` changes rapidly.
+
+## Verification Plan
