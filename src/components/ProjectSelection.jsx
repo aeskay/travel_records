@@ -171,13 +171,13 @@ const ProjectSelection = ({ user, onSelectProject }) => {
                     {/* Header & Search */}
                     <div className="content-header">
                         <h2 className="section-title">
-                            {activeTab === 'all' ? 'All Projects' : 'Recent Projects'}
+                            {activeTab === 'all' ? 'All Trips' : 'Recent Trips'}
                         </h2>
                         <div className="search-wrapper">
                             <FolderOpen size={16} className="search-icon" />
                             <input
                                 type="text"
-                                placeholder="Search projects..."
+                                placeholder="Search trips..."
                                 className="search-input"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
