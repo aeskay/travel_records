@@ -11,7 +11,8 @@ import {
     query,
     where,
     orderBy,
-    writeBatch
+    writeBatch,
+    onSnapshot
 } from 'firebase/firestore';
 
 // Collection refs
@@ -30,11 +31,20 @@ export const getProjects = async (username) => {
     return snapToData(snap);
 };
 
+export const getProject = async (projectId) => {
+    const d = await getDoc(doc(projectsRef, projectId));
+    if (d.exists()) {
+        return { id: d.id, ...d.data() };
+    }
+    return null;
+};
+
 export const createProject = async (name, username) => {
     const newProject = {
         name,
         createdBy: username,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        users: [{ email: username, role: 'admin' }] // Creator is always admin
     };
     const docRef = await addDoc(projectsRef, newProject);
     return { id: docRef.id, ...newProject };
@@ -45,6 +55,36 @@ export const updateProject = async (projectId, data, username) => {
         ...data,
         lastModified: new Date().toISOString(),
         lastModifiedBy: username || 'anon'
+    });
+};
+
+export const manageProjectUsers = async (projectId, action, payload, username) => {
+    const projectRef = doc(projectsRef, projectId);
+    const projectSnap = await getDoc(projectRef);
+    if (!projectSnap.exists()) throw new Error("Project not found");
+
+    const project = projectSnap.data();
+    let users = project.users || []; // Backwards compatibility
+
+    // Check if requester is admin (simple check here, strict check in UI/Rules)
+    // Note: We trust the UI for now as we don't have backend rules
+
+    if (action === 'add') {
+        // payload: { email, role }
+        if (users.find(u => u.email === payload.email)) throw new Error("User already exists");
+        users.push(payload);
+    } else if (action === 'remove') {
+        // payload: { email }
+        users = users.filter(u => u.email !== payload.email);
+    } else if (action === 'updateRole') {
+        // payload: { email, role }
+        users = users.map(u => u.email === payload.email ? { ...u, role: payload.role } : u);
+    }
+
+    await updateDoc(projectRef, {
+        users,
+        lastModified: new Date().toISOString(),
+        lastModifiedBy: username
     });
 };
 
@@ -158,6 +198,24 @@ export const getDetails = async (sectionId, username) => {
     return data.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 };
 
+export const subscribeToDetails = (sectionId, username, callback) => {
+    const q = query(
+        detailsRef,
+        where('sectionId', '==', sectionId)
+    );
+
+    // onSnapshot returns an unsubscribe function
+    return onSnapshot(q, (snapshot) => {
+        const data = snapToData(snapshot);
+        // Sort manually to match getDetails behavior
+        const sortedData = data.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        callback(sortedData);
+    }, (error) => {
+        console.error("Error subscribing to details:", error);
+        callback([]);
+    });
+};
+
 export const addDetail = async (detail, username) => {
     await addDoc(detailsRef, detail);
 };
@@ -226,18 +284,22 @@ export const restoreData = async (data, username) => {
     }
 };
 
-export const saveSharedDaysPlan = async (plan) => {
+export const saveSharedDaysPlan = async (projectId, plan) => {
+    if (!projectId) return;
     const planRef = collection(db, 'user_plans');
-    await setDoc(doc(planRef, 'SHARED_ADMIN_PLAN'), {
+    // Save to a specific document for this project
+    await setDoc(doc(planRef, 'PLAN_' + projectId), {
         plan,
+        projectId,
         lastModified: new Date().toISOString()
     });
 };
 
-export const getSharedDaysPlan = async () => {
+export const getSharedDaysPlan = async (projectId) => {
+    if (!projectId) return [];
     const planRef = collection(db, 'user_plans');
     try {
-        const d = await getDoc(doc(planRef, 'SHARED_ADMIN_PLAN'));
+        const d = await getDoc(doc(planRef, 'PLAN_' + projectId));
         if (d.exists()) {
             return d.data().plan || [];
         }

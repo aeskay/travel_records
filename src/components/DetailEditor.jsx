@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getDetails, addDetail, updateDetail, deleteDetail, addSection } from '../db';
+import { getDetails, addDetail, updateDetail, deleteDetail, addSection, subscribeToDetails } from '../db';
 import { History, Save, Edit3, Camera, Mic, X, Image as LucideImage, Square, Trash2, Check, RotateCcw } from 'lucide-react';
 import ImageResizer from './ImageResizer';
 import ImageLightbox from './ImageLightbox';
@@ -23,31 +23,25 @@ const DetailEditor = ({ section, onUpdate }) => {
     const chunksRef = useRef([]);
     const endOfListRef = useRef(null);
 
-    const loadDetails = useCallback(async () => {
-        try {
-            if (!section?.id || !user) return;
-            const data = await getDetails(section.id, user.username);
-            if (Array.isArray(data)) {
-                // Sort Oldest -> Newest (user wants new below previous)
-                setDetails([...data].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()));
-            } else {
-                setDetails([]);
-            }
-        } catch (err) {
-            console.error("Error loading details:", err);
-            setDetails([]);
-        }
+    // Real-time subscription
+    useEffect(() => {
+        if (!section?.id || !user) return;
+
+        const unsubscribe = subscribeToDetails(section.id, user.username, (newDetails) => {
+            setDetails(newDetails);
+        });
+
+        return () => unsubscribe();
     }, [section?.id, user]);
 
     useEffect(() => {
-        loadDetails();
         if (editorRef.current) {
             editorRef.current.innerHTML = '';
         }
         setIsRecording(false);
         setEditingId(null);
         setSelectedImg(null);
-    }, [loadDetails]);
+    }, [section?.id]);
 
     // Auto-scroll to bottom of timeline when details change
     useEffect(() => {
@@ -164,6 +158,9 @@ const DetailEditor = ({ section, onUpdate }) => {
                     console.error("Speech recognition error", event.error);
                 };
 
+                recognitionRef.current.onend = () => {
+                };
+
                 try {
                     recognitionRef.current.start();
                 } catch (e) {
@@ -181,27 +178,32 @@ const DetailEditor = ({ section, onUpdate }) => {
             };
 
             mediaRecorderRef.current.onstop = () => {
-                // Stop speech recognition if active
-                if (recognitionRef.current) {
-                    try {
-                        recognitionRef.current.stop();
-                    } catch (e) {
-                        // Ignore error if already stopped
+                // Wait a moment for speech recognition to finalize its last result
+                setTimeout(() => {
+                    // Stop speech recognition if active
+                    if (recognitionRef.current) {
+                        try {
+                            recognitionRef.current.stop();
+                        } catch (e) {
+                            // Ignore error if already stopped
+                        }
                     }
-                }
 
-                const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    const transcriptHtml = transcriptRef.current.trim()
-                        ? `<details open style="margin-top: 0.5rem; border: 1px solid hsl(var(--border)); padding: 0.5rem; border-radius: 4px; background: hsl(var(--card));"><summary style="cursor: pointer; font-weight: bold; font-size: 0.8rem; color: hsl(var(--muted-foreground)); user-select: none;">Transcript</summary><div style="margin-top: 0.5rem; white-space: pre-wrap; font-size: 0.9rem; color: hsl(var(--foreground)); line-height: 1.5;">${transcriptRef.current}</div></details>`
-                        : '';
+                    const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        const transcriptHtml = transcriptRef.current.trim()
+                            ? `<details open style="margin-top: 0.5rem; border: 1px solid hsl(var(--border)); padding: 0.5rem; border-radius: 4px; background: hsl(var(--card));"><summary style="cursor: pointer; font-weight: bold; font-size: 0.8rem; color: hsl(var(--muted-foreground)); user-select: none;">Transcript</summary><div style="margin-top: 0.5rem; white-space: pre-wrap; font-size: 0.9rem; color: hsl(var(--foreground)); line-height: 1.5;">${transcriptRef.current}</div></details>`
+                            : '';
 
-                    const audioHtml = `<br/><div class="audio-note-container" style="border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 0.5rem; background: hsl(var(--card)); margin: 0.5rem 0;"><audio controls src="${reader.result}" style="width: 100%; margin-bottom: 0.5rem;"></audio>${transcriptHtml}</div><br/>`;
-                    insertHtmlAtCursor(audioHtml);
-                };
-                reader.readAsDataURL(blob);
-                stream.getTracks().forEach(track => track.stop());
+                        const audioHtml = `<br/><div class="audio-note-container" style="border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 0.5rem; background: hsl(var(--card)); margin: 0.5rem 0;"><audio controls src="${reader.result}" style="width: 100%; margin-bottom: 0.5rem;"></audio>${transcriptHtml}</div><br/>`;
+                        insertHtmlAtCursor(audioHtml);
+                    };
+                    reader.readAsDataURL(blob);
+
+                    // Stop tracks AFTER giving recognition a chance to finish
+                    stream.getTracks().forEach(track => track.stop());
+                }, 500); // 500ms delay to catch final partials
             };
 
             mediaRecorderRef.current.start();
@@ -298,17 +300,16 @@ const DetailEditor = ({ section, onUpdate }) => {
             // Send to DB
             await addDetail(newDetail, user.username);
 
-            // Update parent section timestamp
-            await addSection({
+            // Update parent section timestamp (fire and forget for UI responsiveness)
+            addSection({
                 ...section,
                 lastModified: new Date().toISOString(),
                 lastModifiedBy: user.username
-            }, user.username);
+            }, user.username).catch(console.error);
 
             if (onUpdate) onUpdate();
 
-            // Reload to get real ID and server timestamp
-            await loadDetails();
+            // No need to reload - subscription handles it
         } catch (err) {
             console.error("Error saving note:", err);
             alert("Failed to save note: " + err.message);
@@ -327,7 +328,7 @@ const DetailEditor = ({ section, onUpdate }) => {
                 lastModifiedBy: user.username
             }, user.username);
             if (onUpdate) onUpdate();
-            await loadDetails();
+            // await loadDetails(); // Handled by subscription
         }
     };
 
@@ -350,7 +351,7 @@ const DetailEditor = ({ section, onUpdate }) => {
         if (onUpdate) onUpdate();
 
         setEditingId(null);
-        await loadDetails();
+        // await loadDetails(); // Handled by subscription
     };
 
     return (

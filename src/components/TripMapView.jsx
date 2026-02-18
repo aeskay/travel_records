@@ -97,37 +97,89 @@ const FitBounds = ({ positions }) => {
 
 // --- Hook to detect current theme ---
 const useTheme = () => {
-    const [isDark, setIsDark] = useState(document.documentElement.getAttribute('data-theme') !== 'light');
+    const [theme, setTheme] = useState(document.documentElement.getAttribute('data-theme') || 'dark');
 
     useEffect(() => {
         const observer = new MutationObserver(() => {
-            setIsDark(document.documentElement.getAttribute('data-theme') !== 'light');
+            setTheme(document.documentElement.getAttribute('data-theme') || 'dark');
         });
         observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
         return () => observer.disconnect();
     }, []);
 
-    return isDark;
+    return theme;
 };
 
 // --- OSRM Route Fetcher ---
+// --- OSRM Route Fetcher (Chunked) ---
 const fetchOSRMRoute = async (waypoints) => {
     // waypoints: array of [lat, lng]
-    // OSRM expects lng,lat format
-    const coordString = waypoints.map(([lat, lng]) => `${lng},${lat}`).join(';');
-    const url = `${OSRM_BASE}/${coordString}?overview=full&geometries=geojson`;
+    if (!waypoints || waypoints.length < 2) return null;
 
-    try {
-        const res = await fetch(url);
-        const data = await res.json();
-        if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
-            // GeoJSON coordinates are [lng, lat], Leaflet needs [lat, lng]
-            return data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+    // Helper for single chunk fetch
+    const fetchChunk = async (chunk) => {
+        // OSRM expects lng,lat format
+        const coordString = chunk.map(([lat, lng]) => `${lng},${lat}`).join(';');
+        const url = `${OSRM_BASE}/${coordString}?overview=full&geometries=geojson`;
+
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+            if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+                // GeoJSON coordinates are [lng, lat], Leaflet needs [lat, lng]
+                return data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+            }
+        } catch (err) {
+            console.warn('OSRM chunk fetch failed:', err);
         }
-    } catch (err) {
-        console.warn('OSRM route fetch failed, falling back to straight lines:', err);
+        return null;
+    };
+
+    // If small enough, fetch directly
+    if (waypoints.length <= 15) {
+        return await fetchChunk(waypoints);
     }
-    return null;
+
+    // Otherwise, chunk it
+    const chunkSize = 15;
+    const geometry = [];
+
+    // We need overlap between chunks to ensure continuity
+    // e.g., Chunk 1: indices 0-14
+    // Chunk 2: indices 14-28 (starts where previous ended)
+
+    for (let i = 0; i < waypoints.length - 1; i += (chunkSize - 1)) {
+        const chunk = waypoints.slice(i, i + chunkSize);
+        // If chunk has less than 2 points, skip (end of list overlap edge case)
+        if (chunk.length < 2) break;
+
+        const chunkGeometry = await fetchChunk(chunk);
+
+        if (chunkGeometry) {
+            // Determine start index for stitching
+            // For the first chunk, take everything.
+            // For subsequent chunks, skip the first point because it's the same as the last point of previous chunk
+            // BUT OSRM might return slightly different coords for the same waypoint due to snapping.
+            // Visually it's safer to just push all, or maybe exclude first?
+            // Let's exclude first point of subsequent chunks to avoid duplicate points in polyline
+            if (geometry.length > 0) {
+                geometry.push(...chunkGeometry.slice(1));
+            } else {
+                geometry.push(...chunkGeometry);
+            }
+        } else {
+            // Fallback for this segment: straight line between waypoints
+            // This ensures we don't lose the whole route if one complex bit fails
+            const straightLine = chunk;
+            if (geometry.length > 0) {
+                geometry.push(...straightLine.slice(1));
+            } else {
+                geometry.push(...straightLine);
+            }
+        }
+    }
+
+    return geometry.length > 0 ? geometry : null;
 };
 
 // --- Sequence Editor Sub-component ---
@@ -259,8 +311,10 @@ const LocationMarker = () => {
 };
 
 // --- Main Component ---
-const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpdateSection, onRemoveFromRoute, username, isAdmin }) => {
-    const isDark = useTheme();
+const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpdateSection, onRemoveFromRoute, username, isAdmin, projectId }) => {
+    const theme = useTheme();
+    // Use dark tiles for 'dark' and 'medium' themes
+    const isDarkTiles = theme === 'dark' || theme === 'medium';
     const allTypes = useMemo(() => [...new Set(sections.map(s => s.type).filter(Boolean))], [sections]);
     const [routeGeometry, setRouteGeometry] = useState(null);
     const [routeLoading, setRouteLoading] = useState(false);
@@ -276,24 +330,32 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
 
     // Load shared plan
     useEffect(() => {
-        getSharedDaysPlan().then(plan => {
-            if (plan && Array.isArray(plan)) {
-                setDaysPlan(plan);
-            }
-        });
-    }, []);
+        if (projectId) {
+            getSharedDaysPlan(projectId).then(plan => {
+                if (plan && Array.isArray(plan)) {
+                    setDaysPlan(plan);
+                } else {
+                    setDaysPlan([]); // Reset if no plan found (fixes switching projects issue)
+                }
+            });
+        }
+    }, [projectId]);
 
     // Save shared plan (debounced) - Admin Only
     useEffect(() => {
-        if (isAdmin) {
+        if (isAdmin && projectId) {
             const timer = setTimeout(() => {
-                if (daysPlan.length > 0) {
-                    saveSharedDaysPlan(daysPlan);
+                // Save even if empty to clear it? Or only if modified?
+                // The issue is if we clear it, we want to save that too.
+                // But we need to avoid saving empty on initial load before fetch returns.
+                // For now, let's assume if it changed, we save.
+                if (daysPlan !== undefined) {
+                    saveSharedDaysPlan(projectId, daysPlan);
                 }
             }, 1000); // 1s debounce
             return () => clearTimeout(timer);
         }
-    }, [daysPlan, isAdmin]);
+    }, [daysPlan, isAdmin, projectId]);
 
     const handleAddDay = () => {
         const nextDay = daysPlan.length + 1;
@@ -372,33 +434,66 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
         return R * c;
     };
 
-    const getEstimatedTime = (day) => {
-        if (!day.sequences || day.sequences.length === 0) return "0m";
+    // Calculate stats for all days (distance, time, start/end locations)
+    const dayStats = useMemo(() => {
+        const stats = {};
+        const sortedDays = [...daysPlan].sort((a, b) => a.day - b.day);
+        let currentLocation = HOME_POSITION;
 
-        // Get sections for this day
-        const daySections = sections.filter(s =>
-            day.sequences.includes(Number(s.test_sequence)) && s.coordinates
-        ).sort((a, b) => Number(a.test_sequence) - Number(b.test_sequence));
+        sortedDays.forEach(day => {
+            const daySections = sections.filter(s =>
+                day.sequences.includes(Number(s.test_sequence)) && s.coordinates
+            ).sort((a, b) => Number(a.test_sequence) - Number(b.test_sequence));
 
-        if (daySections.length === 0) return "0m";
+            let totalMiles = 0;
+            let totalTime = 0;
 
-        let totalMiles = 0;
-        for (let i = 0; i < daySections.length - 1; i++) {
-            const c1 = parseCoords(daySections[i].coordinates);
-            const c2 = parseCoords(daySections[i + 1].coordinates);
-            if (c1 && c2) {
-                totalMiles += calculateDistance(c1, c2);
+            if (daySections.length > 0) {
+                const dayMappable = daySections
+                    .map(s => parseCoords(s.coordinates))
+                    .filter(c => c);
+
+                // Start -> First Stop
+                if (dayMappable.length > 0) {
+                    totalMiles += calculateDistance(currentLocation, dayMappable[0]);
+                }
+
+                // Stop i -> Stop i+1
+                for (let i = 0; i < dayMappable.length - 1; i++) {
+                    totalMiles += calculateDistance(dayMappable[i], dayMappable[i + 1]);
+                }
+
+                // Update current location to last stop
+                if (dayMappable.length > 0) {
+                    currentLocation = dayMappable[dayMappable.length - 1];
+                }
+
+                // If Last Day, add route to Home (optional, but good for round trip estimates)
+                // For now, let's strictly follow the routing logic: 
+                // Routing logic adds return to home ONLY if it's the last day.
+                if (day.day === sortedDays[sortedDays.length - 1].day) {
+                    totalMiles += calculateDistance(currentLocation, HOME_POSITION);
+                }
+
+                const drivingMinutes = (totalMiles / 50) * 60; // 50mph avg
+                const stopMinutes = daySections.length * 15; // 15 min per stop
+                totalTime = Math.round(drivingMinutes + stopMinutes);
             }
-        }
 
-        // Add 15 mins per stop + driving time (assume 50mph avg)
-        const drivingMinutes = (totalMiles / 50) * 60;
-        const stopMinutes = daySections.length * 15;
-        const totalMinutes = Math.round(drivingMinutes + stopMinutes);
+            const h = Math.floor(totalTime / 60);
+            const m = totalTime % 60;
+            stats[day.day] = {
+                miles: totalMiles.toFixed(1),
+                timeStr: `${h}h ${m}m`,
+                totalMinutes: totalTime
+            };
+        });
 
-        const h = Math.floor(totalMinutes / 60);
-        const m = totalMinutes % 60;
-        return `${h}h ${m}m`;
+        return stats;
+    }, [daysPlan, sections]);
+
+    const getEstimatedTime = (day) => {
+        return dayStats[day.day]?.timeStr || "0h 0m";
     };
 
     // Parse sections with valid coordinates
@@ -818,9 +913,9 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                     zoomControl={true}
                 >
                     <TileLayer
-                        key={isDark ? 'dark' : 'light'}
+                        key={isDarkTiles ? 'dark' : 'light'}
                         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                        url={isDark ? DARK_TILES : LIGHT_TILES}
+                        url={isDarkTiles ? DARK_TILES : LIGHT_TILES}
                     />
 
                     <FitBounds positions={allPositions} selectedPosition={selectedPosition} />

@@ -82,7 +82,7 @@ const DashboardView = ({ sections, counts, onSelectSection }) => {
         <div className="dashboard-container fade-in">
             {/* Header */}
             <div className="flex flex-col gap-1">
-                <h1 className="dashboard-title">Project Overview</h1>
+                <h1 className="dashboard-title">Trip Overview</h1>
                 <p className="dashboard-subtitle">Track your evaluation progress and manage trip itinerary.</p>
             </div>
 
@@ -96,7 +96,7 @@ const DashboardView = ({ sections, counts, onSelectSection }) => {
 
             {/* Trip Calendar - Sequence Grid */}
             <div className="flex flex-col gap-4">
-                <h2 className="text-xl font-bold">Trip Calendar</h2>
+                <h2 className="text-xl font-bold">Trip Sequence</h2>
 
                 <div className="calendar-section">
                     <div className="sequence-grid">

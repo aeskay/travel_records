@@ -333,6 +333,7 @@ select.input option {
     background-color: hsl(var(--card));
     color: hsl(var(--card-foreground));
     padding: 1.5rem;
+    margin: 10px 0;
 }
 
 /* Badges */

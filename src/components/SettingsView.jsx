@@ -1,15 +1,16 @@
 import { useState, useRef } from 'react';
 import { useUser } from '../context/UserContext';
-import { getAllData, restoreData } from '../db';
-import { Moon, Sun, Download, Upload, LogOut, User, Edit2, Save, Trash2, X } from 'lucide-react';
+import { getAllData, restoreData, manageProjectUsers } from '../db';
+import { Moon, Sun, Sunset, Download, Upload, LogOut, User, Edit2, Save, Trash2, X, Plus } from 'lucide-react';
 
-const SettingsView = ({ onClose, isAdmin }) => {
+const SettingsView = ({ onClose, isAdmin, currentProject, onProjectUpdate }) => {
     const { user, logout, updateUserProfile, deleteUserAccount } = useUser();
-    const [isDark, setIsDark] = useState(document.documentElement.getAttribute('data-theme') !== 'light');
+    const [theme, setTheme] = useState(document.documentElement.getAttribute('data-theme') || 'dark');
     const fileInputRef = useRef(null);
 
     // Profile editing state
     const [isEditingProfile, setIsEditingProfile] = useState(false);
+    const [inviteEmail, setInviteEmail] = useState('');
     const [profileData, setProfileData] = useState({
         username: user.username || '',
         firstName: '',
@@ -17,9 +18,13 @@ const SettingsView = ({ onClose, isAdmin }) => {
     });
 
     const toggleTheme = () => {
-        const newTheme = isDark ? 'light' : 'dark';
+        let newTheme = 'dark';
+        if (theme === 'dark') newTheme = 'light';
+        else if (theme === 'light') newTheme = 'medium';
+        else if (theme === 'medium') newTheme = 'dark';
+
         document.documentElement.setAttribute('data-theme', newTheme);
-        setIsDark(!isDark);
+        setTheme(newTheme);
     };
 
     const handleBackup = async () => {
@@ -100,6 +105,18 @@ const SettingsView = ({ onClose, isAdmin }) => {
         }
     };
 
+    const handleManageUser = async (action, payload) => {
+        try {
+            await manageProjectUsers(currentProject.id, action, payload, user.username);
+            // Optimistic update or callback?
+            if (onProjectUpdate) onProjectUpdate();
+            if (action === 'add') setInviteEmail('');
+        } catch (err) {
+            console.error("User management error:", err);
+            alert("Failed: " + err.message);
+        }
+    };
+
     return (
         <div className="max-w-4xl mx-auto space-y-6">
             <h2 className="text-2xl font-bold border-b border-[hsl(var(--border))] pb-4 mb-6">Settings</h2>
@@ -175,43 +192,119 @@ const SettingsView = ({ onClose, isAdmin }) => {
                 <div className="flex justify-between items-center">
                     <h3 className="text-lg font-medium">Appearance</h3>
                     <div className="flex items-center gap-4">
-                        <span className="text-muted">Theme</span>
-                        <button onClick={toggleTheme} className="btn btn-outline p-2 h-10 w-10">
-                            {isDark ? <Moon size={20} /> : <Sun size={20} />}
+                        <span className="text-muted">Theme: {theme.charAt(0).toUpperCase() + theme.slice(1)}</span>
+                        <button onClick={toggleTheme} className="btn btn-outline p-2 h-10 w-10" title="Toggle Theme">
+                            {theme === 'dark' && <Moon size={20} />}
+                            {theme === 'light' && <Sun size={20} />}
+                            {theme === 'medium' && <Sunset size={20} />}
                         </button>
                     </div>
                 </div>
             </div>
 
             {isAdmin && (
-                <div className="card">
-                    <h3 className="mb-4 text-lg font-medium">Data Management</h3>
+                <>
+                    <div className="card">
+                        <h3 className="mb-4 text-lg font-medium flex items-center gap-2">
+                            <User size={20} /> User Management
+                        </h3>
+                        <div className="space-y-4">
+                            <div className="bg-[hsl(var(--background))] p-4 rounded-md border border-[hsl(var(--border))]">
+                                <h4 className="font-bold mb-2 text-sm uppercase text-muted">Current Users</h4>
+                                <div className="space-y-2">
+                                    {(currentProject?.users || []).map(u => (
+                                        <div key={u.email} className="flex justify-between items-center p-2 hover:bg-[hsl(var(--muted))]/10 rounded">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
+                                                    {u.email.substring(0, 2).toUpperCase()}
+                                                </div>
+                                                <div>
+                                                    <div className="font-medium text-sm">{u.email}</div>
+                                                    <div className="text-xs text-muted capitalize">{u.role}</div>
+                                                </div>
+                                            </div>
 
-                    <div className="space-y-4 divide-y divide-[hsl(var(--border))]">
-                        <div className="flex justify-between items-center py-2">
-                            <div>
-                                <strong className="block">Backup Data</strong>
-                                <span className="text-sm text-muted">Download a copy of your data</span>
-                            </div>
-                            <button onClick={handleBackup} className="btn btn-primary">
-                                <Download size={16} /> Download
-                            </button>
-                        </div>
+                                            {u.email !== currentProject.createdBy && (
+                                                <div className="flex items-center gap-2">
+                                                    <select
+                                                        className="input text-xs py-1 px-2 h-auto"
+                                                        value={u.role}
+                                                        onChange={(e) => handleManageUser('updateRole', { email: u.email, role: e.target.value })}
+                                                    >
+                                                        <option value="viewer">Viewer</option>
+                                                        <option value="admin">Admin</option>
+                                                    </select>
+                                                    <button
+                                                        onClick={() => handleManageUser('remove', { email: u.email })}
+                                                        className="btn btn-outline p-1 text-destructive hover:bg-destructive/10 h-auto"
+                                                        title="Remove User"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </div>
+                                            )}
+                                            {u.email === currentProject.createdBy && (
+                                                <span className="text-xs badge bg-primary/10 text-primary px-2 py-1 rounded">Owner</span>
+                                            )}
+                                        </div>
+                                    ))}
+                                    {(!currentProject?.users || currentProject.users.length === 0) && (
+                                        <p className="text-sm text-muted italic">No other users in this trip.</p>
+                                    )}
+                                </div>
 
-                        <div className="flex justify-between items-center pt-4">
-                            <div>
-                                <strong className="block">Restore Data</strong>
-                                <span className="text-sm text-muted">Import data from a backup file</span>
-                            </div>
-                            <div>
-                                <input type="file" ref={fileInputRef} accept=".json" className="hidden" onChange={handleRestore} />
-                                <button onClick={() => fileInputRef.current.click()} className="btn btn-outline">
-                                    <Upload size={16} /> Upload
-                                </button>
+                                <div className="mt-4 pt-4 border-t border-[hsl(var(--border))]">
+                                    <h4 className="font-bold mb-2 text-sm uppercase text-muted">Invite User</h4>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="email"
+                                            placeholder="Enter email address"
+                                            className="input flex-1"
+                                            value={inviteEmail}
+                                            onChange={(e) => setInviteEmail(e.target.value)}
+                                        />
+                                        <button
+                                            onClick={() => handleManageUser('add', { email: inviteEmail, role: 'viewer' })}
+                                            className="btn btn-primary whitespace-nowrap"
+                                            disabled={!inviteEmail.trim()}
+                                        >
+                                            <Plus size={16} /> Invite
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
+
+                    <div className="card">
+                        <h3 className="mb-4 text-lg font-medium">Data Management</h3>
+
+                        <div className="space-y-4 divide-y divide-[hsl(var(--border))]">
+                            <div className="flex justify-between items-center py-2">
+                                <div>
+                                    <strong className="block">Backup Data</strong>
+                                    <span className="text-sm text-muted">Download a copy of your data</span>
+                                </div>
+                                <button onClick={handleBackup} className="btn btn-primary">
+                                    <Download size={16} /> Download
+                                </button>
+                            </div>
+
+                            <div className="flex justify-between items-center pt-4">
+                                <div>
+                                    <strong className="block">Restore Data</strong>
+                                    <span className="text-sm text-muted">Import data from a backup file</span>
+                                </div>
+                                <div>
+                                    <input type="file" ref={fileInputRef} accept=".json" className="hidden" onChange={handleRestore} />
+                                    <button onClick={() => fileInputRef.current.click()} className="btn btn-outline">
+                                        <Upload size={16} /> Upload
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </>
             )}
 
             <div className="card">

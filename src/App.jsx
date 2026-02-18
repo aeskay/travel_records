@@ -10,7 +10,7 @@ import EditSectionModal from './components/EditSectionModal';
 import TripMapView from './components/TripMapView';
 import DashboardView from './components/DashboardView';
 import ProjectSelection from './components/ProjectSelection';
-import { getSections, addSections, addSection, deleteSection } from './db';
+import { getSections, addSections, addSection, deleteSection, getProject } from './db';
 import { parseCSV } from './utils/csvImporter';
 import { UserProvider, useUser } from './context/UserContext';
 import './index.css';
@@ -91,7 +91,20 @@ function AppContent() {
   const allTypes = useMemo(() => [...new Set(sections.map(s => s.type).filter(Boolean))], [sections]);
 
   // Admin Check
-  const isAdmin = user?.email === 'samuel.alalade@ttu.edu';
+  const isGlobalAdmin = user?.email === 'samuel.alalade@ttu.edu';
+  const isAdmin = useMemo(() => {
+    if (!currentProject) return false;
+    if (isGlobalAdmin) return true;
+    if (currentProject.createdBy === user.username) return true;
+    return currentProject.users?.find(u => u.email === user.email)?.role === 'admin';
+  }, [currentProject, user, isGlobalAdmin]);
+
+  const refreshProject = async () => {
+    if (currentProject) {
+      const updated = await getProject(currentProject.id);
+      if (updated) setCurrentProject(updated);
+    }
+  };
 
   const handleChangeStatus = async (section, newStatus) => {
     if (!isAdmin) return;
@@ -232,9 +245,15 @@ function AppContent() {
               onRemoveFromRoute={handleRemoveFromRoute}
               username={user?.username}
               isAdmin={isAdmin}
+              projectId={currentProject.id}
             />
           ) : currentView === 'settings' ? (
-            <SettingsView onClose={() => setCurrentView('dashboard')} isAdmin={isAdmin} />
+            <SettingsView
+              onClose={() => setCurrentView('dashboard')}
+              isAdmin={isAdmin}
+              currentProject={currentProject}
+              onProjectUpdate={refreshProject}
+            />
           ) : (
             selectedSection ? (
               <SectionDetail
