@@ -32,7 +32,11 @@ export const getSections = async (username) => {
 
 export const addSection = async (section, username) => {
     // We use the Section ID as the document ID for easy lookup/deduplication
-    await setDoc(doc(sectionsRef, section.id), { ...section, lastModifiedBy: username || 'anon' });
+    await setDoc(doc(sectionsRef, section.id), {
+        ...section,
+        lastModifiedBy: username || 'anon',
+        lastModified: new Date().toISOString()
+    });
 };
 
 export const addSections = async (sections, username, { merge = false } = {}) => {
@@ -42,7 +46,11 @@ export const addSections = async (sections, username, { merge = false } = {}) =>
 
     for (const section of sections) {
         const docRef = doc(sectionsRef, section.id);
-        const data = { ...section, lastModifiedBy: username || 'anon' };
+        const data = {
+            ...section,
+            lastModifiedBy: username || 'anon',
+            lastModified: new Date().toISOString()
+        };
         if (merge) {
             batch.set(docRef, data, { merge: true });
         } else {

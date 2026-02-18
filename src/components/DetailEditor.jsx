@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getDetails, addDetail, updateDetail, deleteDetail } from '../db';
+import { getDetails, addDetail, updateDetail, deleteDetail, addSection } from '../db';
 import { History, Save, Edit3, Camera, Mic, X, Image as LucideImage, Square, Trash2, Check, RotateCcw } from 'lucide-react';
 import ImageResizer from './ImageResizer';
 import ImageLightbox from './ImageLightbox';
 import { useUser } from '../context/UserContext';
 
-const DetailEditor = ({ section }) => {
+const DetailEditor = ({ section, onUpdate }) => {
     const { user } = useUser();
     const [details, setDetails] = useState([]);
     const [isRecording, setIsRecording] = useState(false);
@@ -286,9 +286,28 @@ const DetailEditor = ({ section }) => {
                 content: header + content,
                 timestamp: timestamp.toISOString(),
             };
-            await addDetail(newDetail, user.username);
+
+            // Optimistic Update: Show immediately
+            const tempId = 'temp-' + Date.now();
+            setDetails(prev => [...prev, { ...newDetail, id: tempId }]);
+
+            // Clear editor immediately
             editorRef.current.innerHTML = '';
             setSelectedImg(null);
+
+            // Send to DB
+            await addDetail(newDetail, user.username);
+
+            // Update parent section timestamp
+            await addSection({
+                ...section,
+                lastModified: new Date().toISOString(),
+                lastModifiedBy: user.username
+            }, user.username);
+
+            if (onUpdate) onUpdate();
+
+            // Reload to get real ID and server timestamp
             await loadDetails();
         } catch (err) {
             console.error("Error saving note:", err);
@@ -301,6 +320,13 @@ const DetailEditor = ({ section }) => {
     const handleDelete = async (id) => {
         if (confirm("Are you sure you want to delete this note?")) {
             await deleteDetail(id, user.username);
+            // Update parent section timestamp
+            await addSection({
+                ...section,
+                lastModified: new Date().toISOString(),
+                lastModifiedBy: user.username
+            }, user.username);
+            if (onUpdate) onUpdate();
             await loadDetails();
         }
     };
@@ -313,6 +339,16 @@ const DetailEditor = ({ section }) => {
             ...detail,
             content: newContent
         }, user.username);
+
+        // Update parent section timestamp
+        await addSection({
+            ...section,
+            lastModified: new Date().toISOString(),
+            lastModifiedBy: user.username
+        }, user.username);
+
+        if (onUpdate) onUpdate();
+
         setEditingId(null);
         await loadDetails();
     };

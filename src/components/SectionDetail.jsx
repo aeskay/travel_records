@@ -143,7 +143,7 @@ const SectionDetail = ({ section, onUpdate, allTypes, onChangeStatus, onChangeTy
 
                 {/* Main Content (Editor) - Full Width */}
                 <div className="card dashboard-main-card">
-                    <DetailEditor section={section} />
+                    <DetailEditor section={section} onUpdate={onUpdate} />
                 </div>
 
             </div>

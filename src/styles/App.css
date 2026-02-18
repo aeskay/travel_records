@@ -111,6 +111,36 @@
     color: hsl(var(--muted-foreground));
 }
 
+/* Cursor */
+.cursor-pointer {
+    cursor: pointer;
+}
+
+/* Hover */
+.hover\:text-primary:hover {
+    color: hsl(var(--primary));
+}
+
+/* Transitions */
+.transition-colors {
+    transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+}
+
+/* Text Colors */
+.text-primary {
+    color: hsl(var(--primary));
+}
+
+.text-crimson {
+    color: crimson;
+}
+
+/* Fonts */
+.font-script {
+    font-family: 'Dancing Script', cursive;
+    /* Fallback if not loaded */
+}
+
 /* Layout */
 .app-container {
     display: flex;
@@ -263,11 +293,7 @@
     color: hsl(var(--muted-foreground));
 }
 
-@media (min-width:750px) {
-    .btn-icon {
-        display: none;
-    }
-}
+/* Removed restrictive display:none for .btn-icon on desktop */
 
 .btn-icon:hover {
     background-color: hsl(var(--accent));
@@ -424,7 +450,7 @@ select.input option {
 .modal-overlay {
     position: fixed;
     inset: 0;
-    z-index: 50;
+    z-index: 3100;
     background-color: rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(4px);
     display: flex;
@@ -570,7 +596,7 @@ select.input option {
         position: fixed;
         height: 100%;
         transform: translateX(-100%);
-        z-index: 1100;
+        z-index: 3000;
     }
 
     .sidebar.open {
@@ -643,7 +669,242 @@ select.input option {
     }
 }
 
-/* --- New UI Polish Styles --- */
+/* --- Dashboard Styles --- */
+
+.dashboard-container {
+    padding: 1.5rem;
+    max-width: 1400px;
+    margin: 0 auto;
+    width: 100%;
+    padding-bottom: 5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2.5rem;
+}
+
+.dashboard-title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: hsl(var(--foreground));
+    letter-spacing: -0.025em;
+}
+
+.dashboard-subtitle {
+    color: hsl(var(--muted-foreground));
+    font-size: 1rem;
+}
+
+/* Stats */
+.dashboard-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+}
+
+.stat-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    background-color: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.stat-box-value {
+    font-size: 1.875rem;
+    /* 3xl */
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 0.25rem;
+}
+
+.stat-box-label {
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+    text-align: center;
+}
+
+/* Calendar */
+.calendar-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    /* Center the grid */
+    width: 100%;
+}
+
+.sequence-grid {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    /* 10 per row? User asked for 7 in sketch, but for 1-N sequence 10 might be better? Sticky with 7 as per sketch logic? User said "It's too big... limited width". 7 per row is good for weeks, but for just sequence 10 is often cleaner. Let's stick to 10 for compactness, or 7 if strictly following day-of-week logic? The sketch had 7. Let's do 10 for better density if it's just a list of numbers. Actually, let's stick to auto-fit or a fixed count that fits well. */
+    /* User said "Trip calendar... grid of stops (7 per row)". I should stick to 7 or whatever looks like the sketch. */
+    grid-template-columns: repeat(10, 1fr);
+    gap: 0.5rem;
+    max-width: 600px;
+    /* Limited width */
+    width: 100%;
+}
+
+.sequence-item {
+    aspect-ratio: 1/1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid transparent;
+    border-radius: var(--radius);
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: hsl(var(--foreground));
+    background-color: hsl(var(--card));
+    cursor: default;
+    transition: transform 0.1s;
+    border-color: hsl(var(--border));
+}
+
+.sequence-item:hover {
+    transform: scale(1.1);
+    z-index: 10;
+}
+
+.sequence-item.evaluated {
+    background-color: hsl(142 76% 36% / 0.1);
+    border-color: hsl(142 76% 36%);
+    color: hsl(142 76% 36%);
+}
+
+.sequence-item.pending {
+    background-color: hsl(35 92% 33% / 0.1);
+    border-color: hsl(35 92% 33%);
+    color: hsl(35 92% 33%);
+}
+
+@media (max-width: 640px) {
+    .sequence-grid {
+        grid-template-columns: repeat(7, 1fr);
+        /* 7 on mobile to fit better */
+    }
+}
+
+
+/* Timeline */
+.timeline-container {
+    display: flex;
+    flex-direction: column;
+    padding-left: 0.5rem;
+}
+
+@media (min-width: 750px) {
+    .timeline-container {
+        padding: 0 5rem;
+    }
+}
+
+.timeline-row {
+    display: flex;
+    gap: 1.5rem;
+    position: relative;
+    cursor: pointer;
+    /* group hover effect handled via .timeline-row:hover */
+}
+
+.timeline-marker-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 20px;
+}
+
+.timeline-dot {
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 50%;
+    background-color: hsl(var(--primary));
+    z-index: 10;
+    margin-top: 0.25rem;
+}
+
+.timeline-line {
+    width: 2px;
+    background-color: hsl(var(--border));
+    flex: 1;
+    margin-top: 0.25rem;
+    min-height: 3rem;
+}
+
+.timeline-row:last-child .timeline-line {
+    display: none;
+}
+
+.timeline-body {
+    flex: 1;
+    padding-bottom: 2rem;
+    transition: transform 0.2s;
+}
+
+.timeline-row:hover .timeline-body {
+    transform: translateX(4px);
+}
+
+.timeline-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 0.25rem;
+}
+
+.timeline-id {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: hsl(var(--primary));
+}
+
+.timeline-time {
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+}
+
+.timeline-desc {
+    font-size: 0.875rem;
+    color: hsl(var(--foreground));
+    font-weight: 500;
+}
+
+.timeline-sub {
+    font-size: 0.875rem;
+    color: hsl(var(--muted-foreground));
+}
+
+.no-activity {
+    text-align: center;
+    color: hsl(var(--muted-foreground));
+    padding: 2rem;
+    border: 1px dashed hsl(var(--border));
+    border-radius: var(--radius);
+}
+
+@media (max-width: 768px) {
+    .dashboard-stats-grid {
+        grid-template-columns: 1fr 1fr;
+        /* 2 cols */
+    }
+
+    .calendar-grid {
+        grid-template-columns: repeat(7, 1fr);
+        /* Keep 7 cols even on mobile? Or verify size */
+        gap: 0.5rem;
+    }
+
+    .calendar-day {
+        font-size: 0.875rem;
+        border-width: 1px;
+    }
+}
 
 /* Sidebar Tabs */
 .sidebar-tabs {
@@ -1005,18 +1266,35 @@ select.input option {
 .trip-map-legend {
     position: absolute;
     bottom: 1.5rem;
-    right: 1.5rem;
+    left: 1.5rem;
     z-index: 1000;
     background: hsl(var(--card) / 0.85);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border: 1px solid hsl(var(--border));
     border-radius: 0.75rem;
-    padding: 0.75rem 1rem;
+    padding: 0;
+    /* Removing padding from container, applying to inner */
     min-width: 150px;
-    max-height: 50vh;
-    overflow-y: auto;
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.legend-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    /* Clickable on mobile */
+}
+
+.legend-content {
+    padding: 0 1rem 0.75rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
 }
 
 .legend-title {
@@ -1398,7 +1676,8 @@ select.input option {
     border: 1px solid hsl(var(--border));
     border-radius: var(--radius);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    z-index: 1000;
+    z-index: 1100;
+    /* Above legend (1000) */
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -1434,6 +1713,10 @@ select.input option {
     overflow: hidden;
     background: hsl(var(--background));
     transition: all 0.2s;
+    display: flex;
+    flex-direction: column;
+    /* Ensure it doesn't shrink inappropriately */
+    flex-shrink: 0;
 }
 
 .day-card.expanded {
@@ -1448,6 +1731,8 @@ select.input option {
     align-items: center;
     cursor: pointer;
     background: hsl(var(--muted)/0.1);
+    min-height: 3rem;
+    /* Enforce minimum height */
 }
 
 .day-card-header:hover {
@@ -1459,6 +1744,10 @@ select.input option {
     align-items: center;
     gap: 0.5rem;
     font-size: 0.9rem;
+    /* Ensure it doesn't get crushed */
+    flex-shrink: 0;
+    padding-bottom: 2px;
+    /* Visual tweak */
 }
 
 .day-color-dot {
@@ -1523,10 +1812,103 @@ select.input option {
     }
 
     .trip-map-legend {
-        bottom: 0.75rem;
-        right: 0.75rem;
-        padding: 0.5rem 0.75rem;
-        min-width: 120px;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        border-radius: 12px 12px 0 0;
+        border-bottom: none;
+        padding: 0;
+        min-width: 0;
         font-size: 0.7rem;
+    }
+
+    .legend-header {
+        padding: 0.75rem 1rem;
+        background: hsl(var(--card));
+    }
+
+    .legend-title {
+        margin-bottom: 0;
+        /* Reset margin */
+    }
+
+    .legend-content {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 0.75rem 1rem;
+        padding: 0 1rem 1rem 1rem;
+        background: hsl(var(--card));
+    }
+
+    .legend-item {
+        white-space: nowrap;
+    }
+
+    .trip-map-legend.collapsed .legend-content {
+        display: none;
+    }
+
+    .days-plan-panel {
+        position: fixed;
+        top: auto;
+        /* Let it sit at the bottom or center */
+        bottom: 2rem;
+        left: 1rem;
+        right: 1rem;
+        width: auto;
+        /* Use dynamic viewport height for mobile */
+        max-height: 80dvh;
+        height: auto;
+        display: flex;
+        flex-direction: column;
+        z-index: 2000;
+        background: hsl(var(--card));
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        overflow: hidden;
+        border-radius: var(--radius);
+        /* Prevent scroll chaining */
+        overscroll-behavior: contain;
+    }
+
+    .days-plan-content {
+        flex: 1 1 auto;
+        /* Allow shrinking/growing */
+        overflow-y: auto;
+        min-height: 0;
+        padding: 0.75rem;
+        -webkit-overflow-scrolling: touch;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+}
+
+/* Current Location Pulsing Marker */
+.current-location-marker {
+    width: 14px;
+    height: 14px;
+    display: block;
+    background-color: #3b82f6;
+    border: 2px solid #ffffff;
+    border-radius: 50%;
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+    animation: pulse-blue 2s infinite;
+}
+
+@keyframes pulse-blue {
+    0% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+    }
+
+    70% {
+        transform: scale(1);
+        box-shadow: 0 0 0 10px rgba(59, 130, 246, 0);
+    }
+
+    100% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
     }
 }

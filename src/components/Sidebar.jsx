@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Upload, Plus, Search, ChevronDown, ChevronUp, CheckCircle, Settings as SettingsIcon, Printer, MapPinned } from 'lucide-react';
 import SectionActionMenu from './SectionActionMenu';
 import { printSections } from '../utils/printUtils';
@@ -28,6 +28,18 @@ const Sidebar = ({
 }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [expandedGroups, setExpandedGroups] = useState({});
+    const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+    useEffect(() => {
+        const handleOnline = () => setIsOnline(true);
+        const handleOffline = () => setIsOnline(false);
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
 
     const toggleGroup = (type) => {
         setExpandedGroups(prev => ({ ...prev, [type]: !prev[type] }));
@@ -53,9 +65,30 @@ const Sidebar = ({
     return (
         <aside className={`sidebar ${isCollapsed ? 'collapsed' : 'open'}`}>
             {/* Header */}
-            <div className="sidebar-header flex justify-between items-center">
-                <h2 className="text-lg font-bold">0-7147: Travel Records</h2>
-                <button onClick={toggleSidebar} className="btn-icon">
+            <div className="sidebar-header flex justify-between items-center relative">
+                <div style={{ position: 'absolute', top: '8px', right: '40px', background: 'hsl(var(--card))', padding: '2px 6px', borderRadius: '12px', border: '1px solid hsl(var(--border))', fontSize: '0.65rem', display: 'flex', alignItems: 'center', gap: '4px', zIndex: 10 }}>
+                    {isOnline ? (
+                        <>
+                            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e' }} />
+                            <span style={{ color: '#22c55e' }}>Online</span>
+                        </>
+                    ) : (
+                        <>
+                            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ef4444' }} />
+                            <span style={{ color: '#ef4444' }}>Offline</span>
+                        </>
+                    )}
+                </div>
+                <div className="flex-1 overflow-hidden mr-8">
+                    <h2
+                        className="text-lg font-bold cursor-pointer hover:text-primary transition-colors"
+                        onClick={() => onSelectSection(null)}
+                        title="Go to Dashboard"
+                    >
+                        0-7147: Travel Records
+                    </h2>
+                </div>
+                <button onClick={toggleSidebar} className="btn-icon shrink-0">
                     {isCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
                 </button>
             </div>
@@ -64,14 +97,16 @@ const Sidebar = ({
                 <>
                     <div className="p-4 flex flex-col gap-4 border-b border-[hsl(var(--border))]">
                         {/* Actions */}
-                        <div className="flex gap-2">
-                            <button className="btn btn-primary w-full" onClick={onOpenImport}>
-                                <Upload size={16} /> Import
-                            </button>
-                            <button className="btn btn-outline w-full" onClick={onOpenManual}>
-                                <Plus size={16} /> Add
-                            </button>
-                        </div>
+                        {isAdmin && (
+                            <div className="flex gap-2">
+                                <button className="btn btn-primary w-full" onClick={onOpenImport}>
+                                    <Upload size={16} /> Import
+                                </button>
+                                <button className="btn btn-outline w-full" onClick={onOpenManual}>
+                                    <Plus size={16} /> Add
+                                </button>
+                            </div>
+                        )}
 
                         {/* Search */}
                         <div className="relative">
@@ -152,7 +187,10 @@ const Sidebar = ({
                     </div>
 
                     {/* Footer */}
-                    <div className="sidebar-footer" style={{ display: 'flex', justifyContent: 'space-around', padding: '0.75rem 0.5rem' }}>
+                    <div className="sidebar-footer" style={{ display: 'flex', justifyContent: 'space-around', padding: '0.75rem 0.5rem', position: 'relative' }}>
+                        {/* Network Status */}
+
+
                         <button
                             onClick={onOpenMap}
                             className="btn btn-ghost"

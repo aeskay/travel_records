@@ -8,6 +8,7 @@ import LoginScreen from './components/LoginScreen';
 import SettingsView from './components/SettingsView';
 import EditSectionModal from './components/EditSectionModal';
 import TripMapView from './components/TripMapView';
+import DashboardView from './components/DashboardView';
 import { getSections, addSections, addSection, deleteSection } from './db';
 import { parseCSV } from './utils/csvImporter';
 import { UserProvider, useUser } from './context/UserContext';
@@ -24,6 +25,18 @@ function AppContent() {
   const [currentView, setCurrentView] = useState('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(window.innerWidth < 768);
   const [editingSection, setEditingSection] = useState(null);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   const loadSections = useCallback(async () => {
     if (!user) return;
@@ -163,13 +176,38 @@ function AppContent() {
 
       <main className="main-content">
         <div className="mobile-header">
-          <button
-            className="btn-icon"
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          >
-            <Menu size={24} />
-          </button>
-          <span className="font-bold text-lg">0-7147: Travel Records</span>
+          <div className="flex items-center gap-2">
+            <button
+              className="btn-icon"
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            >
+              <Menu size={24} />
+            </button>
+            <span
+              className="font-bold text-lg cursor-pointer"
+              onClick={() => {
+                setSelectedSection(null);
+                setCurrentView('dashboard');
+              }}
+            >
+              0-7147: Travel Records
+            </span>
+          </div>
+
+          {/* Mobile Online Indicator */}
+          <div style={{ background: 'hsl(var(--card))', padding: '2px 6px', borderRadius: '12px', border: '1px solid hsl(var(--border))', fontSize: '0.65rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            {isOnline ? (
+              <>
+                <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e' }} />
+                <span style={{ color: '#22c55e' }}>Online</span>
+              </>
+            ) : (
+              <>
+                <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ef4444' }} />
+                <span style={{ color: '#ef4444' }}>Offline</span>
+              </>
+            )}
+          </div>
         </div>
 
         <div className="h-full overflow-y-auto">
@@ -203,10 +241,13 @@ function AppContent() {
                 isAdmin={isAdmin}
               />
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-muted text-center p-8 border-2 border-dashed border-[hsl(var(--border))] rounded-lg">
-                <h2 className="text-xl font-bold mb-2 text-[hsl(var(--foreground))]">Select a Section</h2>
-                <p>Choose a section from the sidebar to view details.</p>
-              </div>
+              <DashboardView
+                sections={sections}
+                counts={counts}
+                onSelectSection={(s) => {
+                  setSelectedSection(s);
+                }}
+              />
             )
           )}
         </div>

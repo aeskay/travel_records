@@ -1,7 +1,9 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
-import { ArrowLeft, MapPin, Navigation, CheckCircle, Clock, ExternalLink, Building2, Route, Home, Hash, Trash2, Save, Landmark, Calendar, Plus, X, ChevronDown, ChevronUp, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, MapPin, Navigation, CheckCircle, Clock, ExternalLink, Building2, Route, Home, Hash, Trash2, Save, Landmark, Calendar, Plus, X, ChevronDown, ChevronUp, Eye, EyeOff, Printer } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 import 'leaflet/dist/leaflet.css';
 import { saveSharedDaysPlan, getSharedDaysPlan } from '../db';
@@ -51,13 +53,13 @@ const homeIcon = L.divIcon({
     popupAnchor: [0, -20],
 });
 
-const evaluatedIcon = createMarkerIcon('#22c55e', '#16a34a');
+const evaluatedIcon = createMarkerIcon('#22c55e', '#911f13ff');
 const pendingIcon = createMarkerIcon('#f59e0b', '#d97706');
 const selectedIcon = createMarkerIcon('#3b82f6', '#2563eb');
 
 // --- Category Color Palette ---
 const CATEGORY_COLORS = [
-    '#6366f1', '#ec4899', '#14b8a6', '#f97316', '#8b5cf6',
+    '#6366f1', '#ec4899', '#14b8a6', '#f97316', '#d54545ff',
     '#06b6d4', '#ef4444', '#84cc16', '#f43f5e', '#0ea5e9',
     '#a855f7', '#10b981', '#e879f9', '#facc15', '#34d399',
 ];
@@ -182,6 +184,80 @@ const SequenceEditor = ({ section, onUpdateSequence, onRemoveFromRoute, isAdmin 
     );
 };
 
+// --- Location Marker Component ---
+const LocationMarker = () => {
+    const [position, setPosition] = useState(null);
+    const [bbox, setBbox] = useState([]);
+    const map = useMapEvents({
+        locationfound(e) {
+            setPosition(e.latlng);
+            console.log("Location found:", e.latlng);
+            // Optionally fly to location once on first load
+            // map.flyTo(e.latlng, map.getZoom());
+        },
+        locationerror(e) {
+            console.warn("Location access denied or failed:", e.message);
+        }
+    });
+
+    useEffect(() => {
+        map.locate({ watch: true, enableHighAccuracy: true });
+    }, [map]);
+
+    const currentLocationIcon = L.divIcon({
+        className: 'current-location-marker-container',
+        html: `<div class="current-location-marker"></div>`,
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
+        popupAnchor: [0, -10],
+    });
+
+    const handleLocateMe = (e) => {
+        e.stopPropagation(); // Prevent map click
+        if (position) {
+            map.flyTo(position, 16);
+        } else {
+            // Try to locate without forcing persistent setView
+            // The existing watcher will pick it up
+            map.locate({ enableHighAccuracy: true });
+        }
+    };
+
+    return (
+        <>
+            {position && (
+                <Marker position={position} icon={currentLocationIcon} zIndexOffset={1000}>
+                    <Popup>You are here</Popup>
+                </Marker>
+            )}
+            <div className="leaflet-bottom leaflet-right" style={{ pointerEvents: 'none' }}>
+                <div className="leaflet-control leaflet-bar" style={{ pointerEvents: 'auto', marginBottom: '80px', marginRight: '10px' }}>
+                    <a
+                        href="#"
+                        role="button"
+                        title="Show my location"
+                        onClick={(e) => {
+                            e.preventDefault();
+                            handleLocateMe(e);
+                        }}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '34px',
+                            height: '34px',
+                            background: '#fff',
+                            color: '#333'
+                        }}
+                    >
+                        <Navigation size={18} style={{ fill: position ? '#3b82f6' : 'none' }} />
+                    </a>
+                </div>
+            </div>
+        </>
+    );
+};
+
 // --- Main Component ---
 const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpdateSection, onRemoveFromRoute, username, isAdmin }) => {
     const isDark = useTheme();
@@ -195,6 +271,8 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
     const [expandedDay, setExpandedDay] = useState(null);
     const [highlightedDays, setHighlightedDays] = useState(new Set()); // Set of day numbers
     const [showAllDays, setShowAllDays] = useState(false);
+    const [dayRoutes, setDayRoutes] = useState({}); // { dayNum: coordinates[] }
+    const [isLegendOpen, setIsLegendOpen] = useState(true); // Default open on desktop, will override with CSS for mobile if needed, or check width
 
     // Load shared plan
     useEffect(() => {
@@ -363,6 +441,61 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
         return () => { cancelled = true; };
     }, [routeWaypoints]);
 
+    // Fetch routes for each day
+    useEffect(() => {
+        const fetchDayRoutes = async () => {
+            const newDayRoutes = {};
+
+            // Sort days to ensure sequence
+            const sortedDays = [...daysPlan].sort((a, b) => a.day - b.day);
+
+            // Track where the previous day ended
+            let lastLocation = HOME_POSITION;
+
+            for (const day of sortedDays) {
+                // Get sections for this day
+                const daySections = sections.filter(s =>
+                    day.sequences.includes(Number(s.test_sequence)) && s.coordinates
+                ).sort((a, b) => Number(a.test_sequence) - Number(b.test_sequence));
+
+                if (daySections.length === 0) continue;
+
+                const dayMappable = daySections
+                    .map(s => ({ ...s, latLng: parseCoords(s.coordinates) }))
+                    .filter(s => s.latLng);
+
+                if (dayMappable.length === 0) continue;
+
+                // Waypoints: Previous End -> Stops
+                // This creates a continuous path where Day N starts where Day N-1 ended.
+                const waypoints = [lastLocation, ...dayMappable.map(s => s.latLng)];
+
+                // Update lastLocation for the next day
+                lastLocation = dayMappable[dayMappable.length - 1].latLng;
+
+                // SPECIAL RULE: If this is the LAST day, route back to Home
+                if (day.day === sortedDays[sortedDays.length - 1].day) {
+                    waypoints.push(HOME_POSITION);
+                }
+
+                if (waypoints.length >= 2) {
+                    const geometry = await fetchOSRMRoute(waypoints);
+                    if (geometry) {
+                        newDayRoutes[day.day] = geometry;
+                    } else {
+                        // Fallback to straight lines
+                        newDayRoutes[day.day] = waypoints;
+                    }
+                }
+            }
+            setDayRoutes(newDayRoutes);
+        };
+
+        if (showDaysPlan || highlightedDays.size > 0) {
+            fetchDayRoutes();
+        }
+    }, [daysPlan, sections, showDaysPlan, highlightedDays.size]);
+
     // Fallback straight-line positions
     const fallbackPositions = routeWaypoints;
 
@@ -442,6 +575,86 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
         return section.status === 'Evaluated' ? evaluatedIcon : pendingIcon;
     };
 
+    // Print Handler with jsPDF autotable
+    const handlePrint = () => {
+        const doc = new jsPDF();
+
+        // Sorting
+        const sortedDays = [...daysPlan].sort((a, b) => a.day - b.day);
+
+        // Title
+        doc.setFontSize(18);
+        doc.text("Travel Itinerary", 14, 20);
+        doc.setFontSize(11);
+        doc.setTextColor(100);
+
+        if (sortedDays.length === 0) {
+            doc.text("No itinerary days created yet.", 14, 30);
+            doc.save("itinerary.pdf");
+            return;
+        }
+
+        let finalY = 30;
+
+        sortedDays.forEach((day, index) => {
+            // Check for page overflow
+            if (finalY > 250) {
+                doc.addPage();
+                finalY = 20;
+            }
+
+            // Day Header
+            doc.setFontSize(14);
+            doc.setTextColor(0);
+            const estTime = getEstimatedTime(day);
+            doc.text(`Day ${day.day} (${estTime})`, 14, finalY);
+            finalY += 10;
+
+            // Get stops
+            const daySections = sections.filter(s =>
+                day.sequences.includes(Number(s.test_sequence))
+            ).sort((a, b) => Number(a.test_sequence) - Number(b.test_sequence));
+
+            if (daySections.length === 0) {
+                doc.setFontSize(10);
+                doc.setTextColor(100);
+                doc.text("No stops assigned.", 14, finalY);
+                finalY += 15;
+            } else {
+                // Table Body
+                const tableBody = daySections.map(s => [
+                    String(s.test_sequence || ''),
+                    s.id || '',
+                    s.type || '',
+                    s.highway || '',
+                    s.district || '',
+                    s.county || '',
+                    s.city || '',
+                    s.coordinates || ''
+                ]);
+
+                autoTable(doc, {
+                    startY: finalY,
+                    head: [['Seq', 'ID', 'Type', 'Hwy', 'Dist', 'County', 'City', 'Coords']],
+                    body: tableBody,
+                    theme: 'grid',
+                    headStyles: { fillColor: [59, 130, 246] },
+                    styles: { fontSize: 8, cellPadding: 2, overflow: 'linebreak' },
+                    columnStyles: {
+                        0: { cellWidth: 10 },
+                        1: { cellWidth: 20 },
+                        7: { cellWidth: 35 }
+                    },
+                    margin: { top: 20 },
+                });
+
+                finalY = doc.lastAutoTable.finalY + 15;
+            }
+        });
+
+        doc.save("itinerary.pdf");
+    };
+
     // Component to handle map background clicks for deselection
     const MapClickHandler = () => {
         useMapEvents({
@@ -470,9 +683,17 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                     </span>
                 </div>
                 <button
+                    onClick={handlePrint}
+                    className="btn btn-ghost"
+                    title="Print Itinerary to PDF"
+                    style={{ marginLeft: 'auto' }}
+                >
+                    <Printer size={18} />
+                </button>
+                <button
                     onClick={() => setShowDaysPlan(!showDaysPlan)}
                     className={`btn btn-ghost ${showDaysPlan ? 'bg-accent' : ''}`}
-                    style={{ marginLeft: 'auto', gap: '8px' }}
+                    style={{ gap: '8px' }}
                 >
                     <Calendar size={18} />
                     <span className="hidden md:inline">Days Plan</span>
@@ -483,7 +704,17 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
             {showDaysPlan && (
                 <div className="days-plan-panel">
                     <div className="days-plan-header">
-                        <h3>Trip Itinerary</h3>
+                        <div className="flex items-center gap-2">
+                            <h3>Trip Itinerary</h3>
+                            <button
+                                onClick={toggleShowAllDays}
+                                className="btn-icon"
+                                title={showAllDays ? "Hide All Routes" : "Show All Routes"}
+                                style={{ padding: '4px' }}
+                            >
+                                {showAllDays ? <Eye size={14} /> : <EyeOff size={14} />}
+                            </button>
+                        </div>
                         <button onClick={() => setShowDaysPlan(false)} className="btn-icon"><X size={16} /></button>
                     </div>
 
@@ -594,6 +825,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
 
                     <FitBounds positions={allPositions} selectedPosition={selectedPosition} />
                     <MapClickHandler />
+                    <LocationMarker />
 
                     {/* Home Marker */}
                     <Marker position={HOME_POSITION} icon={homeIcon} zIndexOffset={500}>
@@ -611,17 +843,38 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                     </Marker>
 
                     {/* Route Polyline — real roads or fallback */}
+                    {/* Standard Route Polyline - Only show if NO days are highlighted to avoid clutter, OR if specifically requested */}
+                    {/* Standard Route Polyline - Always visible as base layer */}
                     {(routeGeometry || fallbackPositions.length > 1) && (
                         <Polyline
                             positions={routeGeometry || fallbackPositions}
                             pathOptions={{
                                 color: '#6366f1',
                                 weight: routeGeometry ? 4 : 3,
-                                opacity: 0.8,
+                                opacity: 0.3, // Dim the main route to be a subtle background
                                 dashArray: routeGeometry ? null : '8, 6',
                             }}
                         />
                     )}
+
+                    {/* Day Specific Routes */}
+                    {Array.from(highlightedDays).map(dayNum => {
+                        const geometry = dayRoutes[dayNum];
+                        if (!geometry) return null;
+                        const color = CATEGORY_COLORS[(dayNum - 1) % CATEGORY_COLORS.length];
+
+                        return (
+                            <Polyline
+                                key={`day-route-${dayNum}`}
+                                positions={geometry}
+                                pathOptions={{
+                                    color: color,
+                                    weight: 5,
+                                    opacity: 0.9,
+                                }}
+                            />
+                        );
+                    })}
 
                     {/* Section Markers */}
                     {mappableSections.map(section => {
@@ -727,34 +980,47 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                 </MapContainer>
 
                 {/* Legend */}
-                <div className="trip-map-legend">
-                    <div className="legend-title">Legend</div>
-                    <div className="legend-item">
-                        <span className="legend-dot" style={{ background: '#22c55e', boxShadow: '0 0 4px #22c55e88' }}></span>
-                        <span>Evaluated</span>
-                    </div>
-                    <div className="legend-item">
-                        <span className="legend-dot" style={{ background: '#f59e0b', boxShadow: '0 0 4px #f59e0b88' }}></span>
-                        <span>Not Evaluated</span>
-                    </div>
-                    <div className="legend-item">
-                        <span className="legend-dot" style={{ background: '#3b82f6', boxShadow: '0 0 4px #3b82f688' }}></span>
-                        <span>Selected</span>
-                    </div>
-                    <div className="legend-item">
-                        <span style={{ fontSize: '14px', lineHeight: 1 }}>🏠</span>
-                        <span>Home (Texas Tech)</span>
-                    </div>
-                    {routeGeometry && (
-                        <div className="legend-item">
-                            <span className="legend-line legend-line-solid"></span>
-                            <span>Route (road)</span>
+                <div className={`trip-map-legend ${isLegendOpen ? 'open' : 'collapsed'}`}>
+                    <div
+                        className="legend-header"
+                        onClick={() => setIsLegendOpen(!isLegendOpen)}
+                    >
+                        <span className="legend-title">Legend</span>
+                        <div className="md:hidden">
+                            {isLegendOpen ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
                         </div>
-                    )}
-                    {!routeGeometry && fallbackPositions.length > 1 && (
-                        <div className="legend-item">
-                            <span className="legend-line"></span>
-                            <span>Route (approx)</span>
+                    </div>
+
+                    {isLegendOpen && (
+                        <div className="legend-content">
+                            <div className="legend-item">
+                                <span className="legend-dot" style={{ background: '#22c55e', boxShadow: '0 0 4px #22c55e88' }}></span>
+                                <span>Evaluated</span>
+                            </div>
+                            <div className="legend-item">
+                                <span className="legend-dot" style={{ background: '#f59e0b', boxShadow: '0 0 4px #f59e0b88' }}></span>
+                                <span>Not Evaluated</span>
+                            </div>
+                            <div className="legend-item">
+                                <span className="legend-dot" style={{ background: '#3b82f6', boxShadow: '0 0 4px #3b82f688' }}></span>
+                                <span>Selected</span>
+                            </div>
+                            <div className="legend-item">
+                                <span style={{ fontSize: '14px', lineHeight: 1 }}>🏠</span>
+                                <span>Home (Texas Tech)</span>
+                            </div>
+                            {routeGeometry && (
+                                <div className="legend-item">
+                                    <span className="legend-line legend-line-solid"></span>
+                                    <span>Route (road)</span>
+                                </div>
+                            )}
+                            {!routeGeometry && fallbackPositions.length > 1 && (
+                                <div className="legend-item">
+                                    <span className="legend-line"></span>
+                                    <span>Route (approx)</span>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
