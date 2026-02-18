@@ -9,6 +9,7 @@ import SettingsView from './components/SettingsView';
 import EditSectionModal from './components/EditSectionModal';
 import TripMapView from './components/TripMapView';
 import DashboardView from './components/DashboardView';
+import ProjectSelection from './components/ProjectSelection';
 import { getSections, addSections, addSection, deleteSection } from './db';
 import { parseCSV } from './utils/csvImporter';
 import { UserProvider, useUser } from './context/UserContext';
@@ -22,10 +23,11 @@ function AppContent() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [filterType, setFilterType] = useState('all');
-  const [currentView, setCurrentView] = useState('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(window.innerWidth < 768);
   const [editingSection, setEditingSection] = useState(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [currentProject, setCurrentProject] = useState(null);
+  const [currentView, setCurrentView] = useState('dashboard');
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -39,16 +41,16 @@ function AppContent() {
   }, []);
 
   const loadSections = useCallback(async () => {
-    if (!user) return;
-    const data = await getSections(user.username);
+    if (!user || !currentProject) return;
+    const data = await getSections(user.username, currentProject.id);
     setSections(data || []);
-  }, [user]);
+  }, [user, currentProject]);
 
   useEffect(() => {
-    if (user) {
+    if (user && currentProject) {
       loadSections();
     }
-  }, [user, loadSections]);
+  }, [user, currentProject, loadSections]);
 
   // Sync selectedSection with sections state to reflect updates (like status changes)
   useEffect(() => {
@@ -94,14 +96,14 @@ function AppContent() {
   const handleChangeStatus = async (section, newStatus) => {
     if (!isAdmin) return;
     const updated = { ...section, status: newStatus };
-    await addSection(updated, user.username);
+    await addSection(updated, user.username, currentProject.id);
     loadSections();
   };
 
   const handleChangeType = async (section, newType) => {
     if (!isAdmin) return;
     const updated = { ...section, type: newType };
-    await addSection(updated, user.username);
+    await addSection(updated, user.username, currentProject.id);
     loadSections();
   };
 
@@ -121,20 +123,20 @@ function AppContent() {
     const removedSeq = Number(section.test_sequence);
     // Clear the removed section's sequence
     const updated = { ...section, test_sequence: '' };
-    await addSection(updated, user.username);
+    await addSection(updated, user.username, currentProject.id);
     // Find all sections with sequence > removedSeq and decrement
     const toRenumber = sections
       .filter(s => s.test_sequence && Number(s.test_sequence) > removedSeq)
       .sort((a, b) => Number(a.test_sequence) - Number(b.test_sequence));
     for (const s of toRenumber) {
-      await addSection({ ...s, test_sequence: String(Number(s.test_sequence) - 1) }, user.username);
+      await addSection({ ...s, test_sequence: String(Number(s.test_sequence) - 1) }, user.username, currentProject.id);
     }
     loadSections();
   };
 
   const handleEditSection = async (updatedSection) => {
     if (!isAdmin) return;
-    await addSection(updatedSection, user.username);
+    await addSection(updatedSection, user.username, currentProject.id);
     setEditingSection(null);
     loadSections();
   };
@@ -147,6 +149,10 @@ function AppContent() {
 
   if (loading) return <div className="flex h-screen items-center justify-center text-muted">Loading...</div>;
   if (!user) return <LoginScreen />;
+
+  if (!currentProject) {
+    return <ProjectSelection user={user} onSelectProject={setCurrentProject} />;
+  }
 
   return (
     <div className="app-container">
@@ -172,6 +178,8 @@ function AppContent() {
         username={user?.username}
         onViewOnMap={handleViewOnMap}
         isAdmin={isAdmin}
+        projectName={currentProject.name}
+        onSwitchProject={() => setCurrentProject(null)}
       />
 
       <main className="main-content">
@@ -218,7 +226,7 @@ function AppContent() {
               onSelectSection={setSelectedSection}
               onBack={() => setCurrentView('dashboard')}
               onUpdateSection={async (updated) => {
-                await addSection(updated, user.username);
+                await addSection(updated, user.username, currentProject.id);
                 loadSections();
               }}
               onRemoveFromRoute={handleRemoveFromRoute}
@@ -264,7 +272,7 @@ function AppContent() {
         <ManualAddModal
           onClose={() => setIsManualModalOpen(false)}
           onComplete={async (newSection) => {
-            await addSection(newSection, user.username);
+            await addSection(newSection, user.username, currentProject.id);
             loadSections();
             setIsManualModalOpen(false);
           }}

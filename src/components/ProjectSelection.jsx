@@ -1,0 +1,312 @@
+
+import React, { useState, useEffect } from 'react';
+import { getProjects, createProject, deleteProject, updateProject, consolidateLegacyProjects } from '../db';
+import { Plus, FolderOpen, Loader, Trash2, Edit2, Map, Calendar, X, Check, Wrench } from 'lucide-react';
+import './ProjectSelection.css';
+
+const ProjectSelection = ({ user, onSelectProject }) => {
+    const [projects, setProjects] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [newProjectName, setNewProjectName] = useState('');
+    const [isCreating, setIsCreating] = useState(false);
+    const [error, setError] = useState(null);
+    const [editingId, setEditingId] = useState(null);
+    const [editName, setEditName] = useState('');
+
+    // Admin email check (case-insensitive)
+    const isAdmin = user?.email?.toLowerCase() === 'samuel.alalade@ttu.edu';
+
+    const [searchQuery, setSearchQuery] = useState('');
+    const [activeTab, setActiveTab] = useState('all'); // 'all', 'recent'
+
+    const fetchProjects = async () => {
+        try {
+            setLoading(true);
+            const data = await getProjects(user.username);
+            setProjects(data || []);
+        } catch (err) {
+            console.error("Error loading trips:", err);
+            setError("Failed to load trips.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchProjects();
+    }, [user]);
+
+    const handleCreate = async (e) => {
+        e.preventDefault();
+        if (!newProjectName.trim()) return;
+
+        setIsCreating(true);
+        try {
+            // FIX: Use email as fallback for username
+            const creatorName = user.username || user.email || 'admin';
+            console.log("Creating trip with:", creatorName);
+
+            const newProject = await createProject(newProjectName, creatorName);
+            await fetchProjects();
+            setNewProjectName('');
+        } catch (err) {
+            console.error("Error creating trip:", err);
+            setError(`Failed to create trip: ${err.message}`);
+        } finally {
+            setIsCreating(false);
+        }
+    };
+
+    const handleDelete = async (e, projectId) => {
+        e.stopPropagation();
+        if (window.confirm("Are you sure you want to delete this trip? This will delete all sections associated with it.")) {
+            try {
+                await deleteProject(projectId, user.username);
+                await fetchProjects();
+            } catch (err) {
+                console.error("Error deleting trip:", err);
+                setError("Failed to delete trip.");
+            }
+        }
+    };
+
+    const handleConsolidate = async () => {
+        setLoading(true);
+        try {
+            const result = await consolidateLegacyProjects(user.username);
+            alert(`Fixed ${result.deletedProjects} duplicate trips and restored ${result.totalSections} sections.`);
+            await fetchProjects();
+        } catch (err) {
+            console.error("Error consolidating:", err);
+            setError("Failed to fix data issues.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const startEditing = (e, project) => {
+        e.stopPropagation();
+        setEditingId(project.id);
+        setEditName(project.name);
+    };
+
+    const saveEdit = async (e) => {
+        e.stopPropagation(); // prevent select
+        try {
+            await updateProject(editingId, { name: editName }, user.username);
+            setEditingId(null);
+            fetchProjects();
+        } catch (err) {
+            console.error("Error updating trip:", err);
+        }
+    };
+
+    const cancelEdit = (e) => {
+        e.stopPropagation();
+        setEditingId(null);
+    };
+
+    // Filter projects based on search and tab
+    const filteredProjects = projects.filter(p => {
+        const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesTab = activeTab === 'all' || (activeTab === 'recent' && new Date(p.createdAt) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
+        return matchesSearch && matchesTab;
+    });
+
+    if (loading) {
+        return (
+            <div className="project-selection-page">
+                <Loader className="animate-spin text-primary" size={32} />
+            </div>
+        );
+    }
+
+    return (
+        <div className="project-selection-page">
+            <div className="dashboard-box">
+                {/* Left Sidebar */}
+                <div className="dashboard-sidebar">
+                    <div className="user-greeting">
+                        <h1>My Trips</h1>
+                        <p>Welcome back, {(user.email || 'Traveler').split('@')[0]}</p>
+                    </div>
+
+                    <div className="sidebar-menu">
+                        <div className="menu-label">Menu</div>
+                        <button
+                            onClick={() => setActiveTab('all')}
+                            className={`sidebar-btn ${activeTab === 'all' ? 'active' : ''}`}
+                        >
+                            <FolderOpen size={18} />
+                            All Trips
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('recent')}
+                            className={`sidebar-btn ${activeTab === 'recent' ? 'active' : ''}`}
+                        >
+                            <Calendar size={18} />
+                            Recent
+                        </button>
+                    </div>
+
+                    {isAdmin && (
+                        <div className="mt-auto">
+                            {projects.some(p => p.name.includes("Legacy")) && (
+                                <div className="maintenance-box">
+                                    <Wrench size={16} className="text-amber-500" />
+                                    <div>
+                                        <div className="text-xs font-bold text-amber-500 uppercase">Maintenance</div>
+                                        <button onClick={handleConsolidate} className="maintenance-btn">
+                                            Fix Duplicate Trips
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                {/* Main Content Area */}
+                <div className="dashboard-content">
+                    {/* Header & Search */}
+                    <div className="content-header">
+                        <h2 className="section-title">
+                            {activeTab === 'all' ? 'All Projects' : 'Recent Projects'}
+                        </h2>
+                        <div className="search-wrapper">
+                            <FolderOpen size={16} className="search-icon" />
+                            <input
+                                type="text"
+                                placeholder="Search projects..."
+                                className="search-input"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Projects Grid */}
+                    <div className="projects-grid">
+
+                        {/* Create New Trip - Dotted Card (Desktop Only) */}
+                        {isAdmin && (
+                            <div className="create-card create-card-grid" onClick={() => document.getElementById('new-trip-input')?.focus()}>
+                                <div className="plus-circle">
+                                    <Plus size={24} />
+                                </div>
+                                <div style={{ width: '80%', textAlign: 'center' }}>
+                                    <div style={{ marginBottom: '20px' }}>
+                                        <span style={{ fontSize: '13px', fontWeight: '500', color: '#a1a1aa' }}>Create New Trip</span>
+                                    </div>
+                                    <form onSubmit={handleCreate} style={{ marginTop: '8px', display: 'flex', gap: '8px' }} onClick={e => e.stopPropagation()}>
+                                        <input
+                                            id="new-trip-input"
+                                            type="text"
+                                            placeholder="Trip Name"
+                                            className="create-input"
+                                            value={newProjectName}
+                                            onChange={e => setNewProjectName(e.target.value)}
+                                        />
+                                        <button
+                                            type="submit"
+                                            className="btn-create"
+                                            disabled={!newProjectName.trim() || isCreating}
+                                            style={{
+                                                padding: '4px 12px',
+                                                borderRadius: '6px',
+                                                background: '#3b82f6',
+                                                color: 'white',
+                                                fontSize: '12px',
+                                                border: 'none',
+                                                cursor: 'pointer',
+                                                whiteSpace: 'nowrap'
+                                            }}
+                                        >
+                                            {isCreating ? <Loader size={12} className="animate-spin" /> : "Add"}
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Project Cards */}
+                        {filteredProjects.map(project => (
+                            <div
+                                key={project.id}
+                                onClick={() => editingId !== project.id && onSelectProject(project)}
+                                className="project-card"
+                            >
+                                <div className="card-actions">
+                                    <button onClick={(e) => startEditing(e, project)} className="action-btn">
+                                        <Edit2 size={14} />
+                                    </button>
+                                    {isAdmin && (
+                                        <button onClick={(e) => handleDelete(e, project.id)} className="action-btn delete">
+                                            <Trash2 size={14} />
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div>
+                                    <div className="card-icon">
+                                        <Map size={20} />
+                                    </div>
+
+                                    {editingId === project.id ? (
+                                        <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <input
+                                                type="text"
+                                                value={editName}
+                                                onChange={(e) => setEditName(e.target.value)}
+                                                style={{ background: 'transparent', border: 'none', borderBottom: '1px solid #3b82f6', color: '#fff', fontSize: '16px', width: '100%', outline: 'none' }}
+                                                autoFocus
+                                            />
+                                            <button onClick={saveEdit} style={{ color: '#10b981', border: 'none', background: 'none', cursor: 'pointer' }}><Check size={18} /></button>
+                                        </div>
+                                    ) : (
+                                        <h3 className="card-title">
+                                            {project.name.replace(' (Legacy)', '')}
+                                        </h3>
+                                    )}
+                                </div>
+
+                                <div className="card-footer">
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <Calendar size={12} />
+                                        <span>{new Date(project.createdAt).getFullYear()}</span>
+                                    </div>
+                                    {project.name.includes('(Legacy)') && (
+                                        <span className="legacy-badge">LEGACY</span>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            {/* Mobile Create FAB */}
+            {isAdmin && (
+                <button
+                    className="fab-create-btn"
+                    onClick={() => {
+                        const name = prompt("Enter Trip Name:");
+                        if (name) {
+                            setNewProjectName(name);
+                            // Trigger create immediately or reuse handleCreate logic?
+                            // For simplicity, let's just reuse logic by simulating event or refactor handleCreate
+                            const fakeEvent = { preventDefault: () => { } };
+                            // Use username fallback here for mobile too
+                            const creatorName = user.username || user.email || 'admin';
+                            createProject(name, creatorName).then(() => fetchProjects()).catch(err => console.error(err));
+                        }
+                    }}
+                >
+                    <Plus size={24} />
+                </button>
+            )}
+        </div>
+    );
+};
+
+export default ProjectSelection;

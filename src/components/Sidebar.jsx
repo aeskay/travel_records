@@ -24,7 +24,9 @@ const Sidebar = ({
     allSections,
     username,
     onViewOnMap,
-    isAdmin
+    isAdmin,
+    projectName,
+    onSwitchProject
 }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [expandedGroups, setExpandedGroups] = useState({});
@@ -87,6 +89,16 @@ const Sidebar = ({
                     >
                         0-7147: Travel Records
                     </h2>
+                    {projectName && (
+                        <div
+                            className="text-xs text-muted-foreground mt-1 flex items-center gap-1 cursor-pointer hover:text-primary transition-colors"
+                            onClick={onSwitchProject}
+                            title="Switch Trip"
+                        >
+                            <span className="truncate font-medium">{projectName}</span>
+                            <ChevronDown size={12} />
+                        </div>
+                    )}
                 </div>
                 <button onClick={toggleSidebar} className="btn-icon shrink-0">
                     {isCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
