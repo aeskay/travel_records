@@ -128,9 +128,18 @@ const DetailEditor = ({ section, onUpdate }) => {
         e.target.value = '';
     };
 
+    const [debugLogs, setDebugLogs] = useState([]);
+
+    const addLog = (msg) => {
+        console.log(msg);
+        setDebugLogs(prev => [new Date().toLocaleTimeString() + ': ' + msg, ...prev].slice(0, 20));
+    };
+
     const startRecording = async () => {
+        addLog("Starting recording sequence...");
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            addLog("Microphone access granted.");
 
             // Initialize Speech Recognition if available
             if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
@@ -141,6 +150,11 @@ const DetailEditor = ({ section, onUpdate }) => {
                 recognitionRef.current.lang = 'en-US';
 
                 transcriptRef.current = '';
+                addLog("SpeechRecognition initialized.");
+
+                recognitionRef.current.onstart = () => {
+                    addLog("SpeechRecognition started.");
+                };
 
                 recognitionRef.current.onresult = (event) => {
                     let finalTranscript = '';
@@ -151,11 +165,16 @@ const DetailEditor = ({ section, onUpdate }) => {
                     }
                     if (finalTranscript) {
                         transcriptRef.current += finalTranscript;
+                        addLog("Final result received: " + finalTranscript.substring(0, 20) + "...");
+                    } else {
+                        // Interim
+                        // addLog("Interim result received."); 
                     }
                 };
 
                 recognitionRef.current.onerror = (event) => {
                     console.error("Speech recognition error", event.error);
+                    addLog("SpeechRecognition error: " + event.error);
                     if (event.error === 'not-allowed') {
                         alert("Microphone access denied for speech recognition.");
                     } else if (event.error === 'network') {
@@ -165,14 +184,18 @@ const DetailEditor = ({ section, onUpdate }) => {
                 };
 
                 recognitionRef.current.onend = () => {
-                    // Recognition ended
+                    addLog("SpeechRecognition ended.");
                 };
 
                 try {
                     recognitionRef.current.start();
+                    addLog("Called recognition.start()");
                 } catch (e) {
                     console.error("Failed to start recognition", e);
+                    addLog("Failed to start recognition: " + e.message);
                 }
+            } else {
+                addLog("SpeechRecognition API NOT available in this browser.");
             }
 
             // Use low bitrate for smaller recordings that fit in Firestore
@@ -185,10 +208,12 @@ const DetailEditor = ({ section, onUpdate }) => {
             };
 
             mediaRecorderRef.current.onstop = () => {
+                addLog("MediaRecorder stopped.");
                 // EXPLICITLY stop recognition if it hasn't already
                 if (recognitionRef.current) {
                     try {
                         recognitionRef.current.stop();
+                        addLog("Called recognition.stop()");
                     } catch (e) {
                         // Ignore
                     }
@@ -197,12 +222,15 @@ const DetailEditor = ({ section, onUpdate }) => {
                 // Wait a moment for speech recognition to finalize its last result
                 // Increased wait time for production latency
                 setTimeout(() => {
+                    addLog("Processing recording...");
                     const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
                     const reader = new FileReader();
                     reader.onloadend = () => {
                         const transcriptHtml = transcriptRef.current.trim()
                             ? `<details open style="margin-top: 0.5rem; border: 1px solid hsl(var(--border)); padding: 0.5rem; border-radius: 4px; background: hsl(var(--card));"><summary style="cursor: pointer; font-weight: bold; font-size: 0.8rem; color: hsl(var(--muted-foreground)); user-select: none;">Transcript</summary><div style="margin-top: 0.5rem; white-space: pre-wrap; font-size: 0.9rem; color: hsl(var(--foreground)); line-height: 1.5;">${transcriptRef.current}</div></details>`
                             : '';
+
+                        addLog("Transcript length: " + transcriptRef.current.length);
 
                         const audioHtml = `<br/><div class="audio-note-container" style="border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 0.5rem; background: hsl(var(--card)); margin: 0.5rem 0;"><audio controls src="${reader.result}" style="width: 100%; margin-bottom: 0.5rem;"></audio>${transcriptHtml}</div><br/>`;
                         insertHtmlAtCursor(audioHtml);
@@ -218,11 +246,13 @@ const DetailEditor = ({ section, onUpdate }) => {
             setIsRecording(true);
         } catch (err) {
             console.error("Error accessing microphone:", err);
+            addLog("Error accessing microphone: " + err.message);
             alert("Could not access microphone.");
         }
     };
 
     const stopRecording = () => {
+        addLog("Stopping recording...");
         if (mediaRecorderRef.current && isRecording) {
             // Signal intent to stop everything
             mediaRecorderRef.current.stop();
@@ -381,6 +411,19 @@ const DetailEditor = ({ section, onUpdate }) => {
                     <History className="text-[hsl(var(--primary))]" /> Activity & History
                 </h3>
             </div>
+
+            {/* Debug Logs Overlay */}
+            {debugLogs.length > 0 && (
+                <div className="mx-2 p-2 bg-black/80 text-green-400 text-xs font-mono rounded overflow-y-auto max-h-[100px] border border-green-900 shadow-sm">
+                    <div className="flex justify-between items-center border-b border-green-800 pb-1 mb-1 sticky top-0 bg-black/80">
+                        <span className="font-bold">Debug Logs</span>
+                        <button onClick={() => setDebugLogs([])} className="text-red-400 hover:text-red-300">Clear</button>
+                    </div>
+                    {debugLogs.map((log, i) => (
+                        <div key={i} className="whitespace-nowrap">{log}</div>
+                    ))}
+                </div>
+            )}
 
             {/* Timeline List (Oldest to Newest) */}
             <div className="timeline" style={{ flex: 1, overflowY: 'auto', minHeight: '200px', maxHeight: '60vh' }}>
