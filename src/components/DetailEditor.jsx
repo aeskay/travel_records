@@ -336,6 +336,7 @@ const DetailEditor = ({ section, onUpdate }) => {
                             detail={detail}
                             isEditing={editingId === detail.id}
                             transcribeAudio={transcribeAudio}
+                            modelProgress={modelProgress}
                             onEditStart={() => setEditingId(detail.id)}
                             onEditCancel={() => setEditingId(null)}
                             onEditSave={(content) => handleUpdate(detail.id, content)}
@@ -444,7 +445,7 @@ const DetailEditor = ({ section, onUpdate }) => {
 };
 
 // Subcomponent for individual history items to handle edit state
-const HistoryItem = ({ detail, isEditing, transcribeAudio, onEditStart, onEditCancel, onEditSave, onDelete, onImageClick }) => {
+const HistoryItem = ({ detail, isEditing, transcribeAudio, modelProgress, onEditStart, onEditCancel, onEditSave, onDelete, onImageClick }) => {
     const itemRef = useRef(null);
     const [selectedImg, setSelectedImg] = useState(null);
     const [isTranscribing, setIsTranscribing] = useState(false);
@@ -558,7 +559,14 @@ const HistoryItem = ({ detail, isEditing, transcribeAudio, onEditStart, onEditCa
                                     className="btn btn-ghost p-1 text-blue-500 hover:text-blue-600 flex items-center gap-1 text-[10px] font-bold"
                                     title="Transcribe Audio"
                                 >
-                                    {isTranscribing ? <RefreshCw size={12} className="animate-spin" /> : "✨ Transcribe"}
+                                    {isTranscribing ? (
+                                        <>
+                                            <RefreshCw size={12} className="animate-spin" />
+                                            {modelProgress !== null && modelProgress < 100 ? `${modelProgress}%` : '...'}
+                                        </>
+                                    ) : (
+                                        "✨ Transcribe"
+                                    )}
                                 </button>
                             )}
                             <button onClick={onEditStart} className="btn btn-ghost p-1 text-muted hover:text-[hsl(var(--foreground))]" title="Edit">

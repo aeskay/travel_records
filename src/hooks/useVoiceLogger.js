@@ -44,10 +44,8 @@ export function useVoiceLogger() {
 
     // ─── Worker setup ────────────────────────────────────────────────────────────
     useEffect(() => {
-        const worker = new Worker(
-            new URL('../workers/whisper.worker.js', import.meta.url),
-            { type: 'module' }
-        );
+        // Load worker from public directory to bypass Vite bundling issues in production
+        const worker = new Worker('/workers/whisper.worker.js', { type: 'module' });
 
         worker.onmessage = (e) => {
             const { status: workerStatus, transcript: resultText, message, data } = e.data;

@@ -1,3 +1,4 @@
+
 import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
 
 // Skip local model checks since we are using CDN
@@ -22,20 +23,22 @@ function isSentinel(text) {
 class PipelineSingleton {
     static task = 'automatic-speech-recognition';
     static model = 'Xenova/whisper-base.en';
-    static instance = null;
+    static instancePromise = null;
 
     static async getInstance(progress_callback = null) {
-        if (this.instance === null) {
-            this.instance = await pipeline(this.task, this.model, { progress_callback });
+        if (this.instancePromise === null) {
+            console.log('[Worker] First-time initialization of pipeline:', this.model);
+            // Store the promise itself to prevent race conditions from concurrent calls
+            this.instancePromise = pipeline(this.task, this.model, { progress_callback });
         }
-        return this.instance;
+        return this.instancePromise;
     }
 }
 
 self.onmessage = async (event) => {
     const { audio, language } = event.data;
 
-    // audio arrives as a Float32Array (transferred, not cloned)
+    // audio arrives as a Float32Array
     if (!(audio instanceof Float32Array)) {
         self.postMessage({ status: 'error', message: 'Invalid audio data received by worker.' });
         return;
@@ -46,8 +49,7 @@ self.onmessage = async (event) => {
             self.postMessage({ status: 'progress', data });
         });
 
-        // Use smaller chunk/stride values so short clips (< 30s) aren't broken
-        // into silent windows. return_timestamps: false keeps the output simple.
+        console.log('[Worker] Starting transcription for audio chunk...');
         const output = await transcriber(audio, {
             chunk_length_s: 25,
             stride_length_s: 3,
@@ -59,13 +61,12 @@ self.onmessage = async (event) => {
         const raw = output.text ?? '';
         console.log('[Worker] Raw transcript:', raw);
 
-        // Filter out Whisper's sentinel "no speech" strings so the app never
-        // displays them as if they were a real transcript.
         const clean = isSentinel(raw) ? '' : raw.trim();
-
         self.postMessage({ status: 'complete', transcript: clean });
     } catch (e) {
         console.error('Worker transcription error:', e);
         self.postMessage({ status: 'error', message: e.message });
+        // Reset promise on error so a retry can attempt to re-init
+        PipelineSingleton.instancePromise = null;
     }
 };
