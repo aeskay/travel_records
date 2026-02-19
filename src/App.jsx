@@ -163,6 +163,12 @@ function AppContent() {
     if (window.innerWidth < 768) setSidebarCollapsed(true);
   };
 
+  const handleUpdateSections = async (updatedSections) => {
+    if (!isAdmin) return;
+    await addSections(updatedSections, user.username, { merge: true, projectId: currentProject?.id });
+    loadSections();
+  };
+
   if (loading) return <div className="flex h-screen items-center justify-center text-muted">Loading...</div>;
   if (!user) return <LoginScreen />;
 
@@ -245,6 +251,7 @@ function AppContent() {
                 await addSection(updated, user.username, currentProject.id);
                 loadSections();
               }}
+              onUpdateSections={handleUpdateSections}
               onRemoveFromRoute={handleRemoveFromRoute}
               username={user?.username}
               isAdmin={isAdmin}

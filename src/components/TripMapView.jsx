@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
-import { ArrowLeft, MapPin, Navigation, CheckCircle, Clock, ExternalLink, Building2, Route, Home, Hash, Trash2, Save, Landmark, Calendar, Plus, X, ChevronDown, ChevronUp, Eye, EyeOff, Printer, Download, FileSpreadsheet } from 'lucide-react';
+import { ArrowLeft, MapPin, Navigation, CheckCircle, Clock, ExternalLink, Building2, Route, Home, Hash, Trash2, Save, Landmark, Calendar, Plus, X, ChevronDown, ChevronUp, Eye, EyeOff, Printer, Download, FileSpreadsheet, Zap, RotateCcw } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -111,13 +111,30 @@ const useTheme = () => {
     return theme;
 };
 
-// --- OSRM Route Fetcher ---
-// --- OSRM Route Fetcher (Chunked) ---
+// Helper: Calculate distance in miles
+const calculateDistance = (coord1, coord2) => {
+    const R = 3959; // Miles
+    const dLat = (coord2[0] - coord1[0]) * Math.PI / 180;
+    const dLon = (coord2[1] - coord1[1]) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(coord1[0] * Math.PI / 180) * Math.cos(coord2[0] * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+};
+
+// --- OSRM Route Fetcher (geometry only, chunked) ---
 const fetchOSRMRoute = async (waypoints) => {
+    const result = await fetchOSRMRouteWithDuration(waypoints);
+    return result ? result.geometry : null;
+};
+
+// --- OSRM Route Fetcher with Duration ---
+const fetchOSRMRouteWithDuration = async (waypoints) => {
     // waypoints: array of [lat, lng]
     if (!waypoints || waypoints.length < 2) return null;
 
-    // Helper for single chunk fetch
+    // Helper for single chunk fetch — returns { geometry, durationSeconds }
     const fetchChunk = async (chunk) => {
         // OSRM expects lng,lat format
         const coordString = chunk.map(([lat, lng]) => `${lng},${lat}`).join(';');
@@ -127,8 +144,12 @@ const fetchOSRMRoute = async (waypoints) => {
             const res = await fetch(url);
             const data = await res.json();
             if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+                const route = data.routes[0];
                 // GeoJSON coordinates are [lng, lat], Leaflet needs [lat, lng]
-                return data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+                return {
+                    geometry: route.geometry.coordinates.map(([lng, lat]) => [lat, lng]),
+                    durationSeconds: route.duration,
+                };
             }
         } catch (err) {
             console.warn('OSRM chunk fetch failed:', err);
@@ -144,33 +165,23 @@ const fetchOSRMRoute = async (waypoints) => {
     // Otherwise, chunk it
     const chunkSize = 15;
     const geometry = [];
-
-    // We need overlap between chunks to ensure continuity
-    // e.g., Chunk 1: indices 0-14
-    // Chunk 2: indices 14-28 (starts where previous ended)
+    let totalDurationSeconds = 0;
 
     for (let i = 0; i < waypoints.length - 1; i += (chunkSize - 1)) {
         const chunk = waypoints.slice(i, i + chunkSize);
-        // If chunk has less than 2 points, skip (end of list overlap edge case)
         if (chunk.length < 2) break;
 
-        const chunkGeometry = await fetchChunk(chunk);
+        const chunkResult = await fetchChunk(chunk);
 
-        if (chunkGeometry) {
-            // Determine start index for stitching
-            // For the first chunk, take everything.
-            // For subsequent chunks, skip the first point because it's the same as the last point of previous chunk
-            // BUT OSRM might return slightly different coords for the same waypoint due to snapping.
-            // Visually it's safer to just push all, or maybe exclude first?
-            // Let's exclude first point of subsequent chunks to avoid duplicate points in polyline
+        if (chunkResult) {
+            totalDurationSeconds += chunkResult.durationSeconds;
             if (geometry.length > 0) {
-                geometry.push(...chunkGeometry.slice(1));
+                geometry.push(...chunkResult.geometry.slice(1));
             } else {
-                geometry.push(...chunkGeometry);
+                geometry.push(...chunkResult.geometry);
             }
         } else {
-            // Fallback for this segment: straight line between waypoints
-            // This ensures we don't lose the whole route if one complex bit fails
+            // Fallback for this segment
             const straightLine = chunk;
             if (geometry.length > 0) {
                 geometry.push(...straightLine.slice(1));
@@ -180,7 +191,7 @@ const fetchOSRMRoute = async (waypoints) => {
         }
     }
 
-    return geometry.length > 0 ? geometry : null;
+    return geometry.length > 0 ? { geometry, durationSeconds: totalDurationSeconds } : null;
 };
 
 // --- Sequence Editor Sub-component ---
@@ -312,7 +323,7 @@ const LocationMarker = () => {
 };
 
 // --- Main Component ---
-const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpdateSection, onRemoveFromRoute, username, isAdmin, projectId, project, onUpdateProject }) => {
+const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpdateSection, onUpdateSections, onRemoveFromRoute, username, isAdmin, projectId, project, onUpdateProject }) => {
     const theme = useTheme();
     // Use dark tiles for 'dark' and 'medium' themes
     const isDarkTiles = theme === 'dark' || theme === 'medium';
@@ -398,36 +409,365 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
     const [highlightedDays, setHighlightedDays] = useState(new Set()); // Set of day numbers
     const [showAllDays, setShowAllDays] = useState(false);
     const [dayRoutes, setDayRoutes] = useState({}); // { dayNum: coordinates[] }
+    const [dayDriveMinutes, setDayDriveMinutes] = useState({}); // { dayNum: driveMinutes } from OSRM
+    const [optimizingDay, setOptimizingDay] = useState(null);
+    const [isGlobalOptimizing, setIsGlobalOptimizing] = useState(false);
+
+    const handleGlobalOptimize = async () => {
+        if (!isAdmin || !onUpdateSections) return;
+
+        if (!window.confirm("Global Optimization will reorganize ALL stops across ALL days to balance travel time. Proceed?")) {
+            return;
+        }
+
+        setIsGlobalOptimizing(true);
+        try {
+            // 1. Gather all assigned sections
+            const allAssignedSections = sections.filter(s =>
+                daysPlan.some(d => d.sequences.includes(Number(s.test_sequence)))
+            );
+
+            if (allAssignedSections.length === 0) {
+                alert("No stops assigned to any days.");
+                return;
+            }
+
+            // 2. Snapshot for Revert (if not already existing)
+            // We need to know which Day each section belongs to currently.
+            const updates = [];
+            const snapshotSections = allAssignedSections.map(s => {
+                const currentDayObj = daysPlan.find(d => d.sequences.includes(Number(s.test_sequence)));
+                const currentDay = currentDayObj ? currentDayObj.day : null;
+
+                const update = { ...s };
+                let modified = false;
+
+                if (!s.original_day && currentDay) {
+                    update.original_day = currentDay;
+                    modified = true;
+                }
+                if (!s.original_sequence) {
+                    update.original_sequence = s.test_sequence;
+                    modified = true;
+                }
+
+                if (modified) updates.push(update);
+                return update; // Return the version with originals set for processing
+            });
+
+            // 3. Grand Tour (Nearest Neighbor)
+            let unvisited = [...snapshotSections];
+            let currentPos = homePosition;
+            const grandTour = [];
+
+            while (unvisited.length > 0) {
+                let closestIdx = -1;
+                let minDist = Infinity;
+
+                for (let i = 0; i < unvisited.length; i++) {
+                    const coords = parseCoords(unvisited[i].coordinates);
+                    if (!coords) continue;
+                    const d = calculateDistance(currentPos, coords);
+                    if (d < minDist) {
+                        minDist = d;
+                        closestIdx = i;
+                    }
+                }
+
+                if (closestIdx !== -1) {
+                    const next = unvisited[closestIdx];
+                    grandTour.push(next);
+                    unvisited.splice(closestIdx, 1);
+                    const nextCoords = parseCoords(next.coordinates);
+                    if (nextCoords) currentPos = nextCoords;
+                } else {
+                    // Fallback for invalid coords
+                    grandTour.push(...unvisited);
+                    break;
+                }
+            }
+
+            // 4. Partition into Days
+            // Calculate total weight (Drive Time + Stop Time)
+            // Weight = minutes
+            const getSectionWeight = (sec, prevCoord) => {
+                const coords = parseCoords(sec.coordinates);
+                if (!coords || !prevCoord) return 15; // Just stop time
+                const miles = calculateDistance(prevCoord, coords);
+                const driveMin = (miles * 1.2 / 65) * 60;
+                return driveMin + 15; // Drive + 15m stop
+            };
+
+            let totalWeight = 0;
+            let simPos = homePosition;
+            for (const sec of grandTour) {
+                const coords = parseCoords(sec.coordinates);
+                totalWeight += getSectionWeight(sec, simPos);
+                if (coords) simPos = coords;
+            }
+            // Add return to home weight (approx)
+            totalWeight += (calculateDistance(simPos, homePosition) * 1.2 / 65) * 60;
+
+            const numDays = daysPlan.length;
+            const targetWeightPerDay = totalWeight / numDays;
+
+            const newDaysPlan = daysPlan.map(d => ({ ...d, sequences: [] }));
+            const finalUpdates = [...updates]; // Start with snapshot updates
+
+            let currentDayIdx = 0;
+            let currentDayWeight = 0;
+            let tourPos = homePosition;
+
+            grandTour.forEach((sec, idx) => {
+                // If we exceeded target and not on last day, switch
+                // But ensure at least one stop per day if possible?
+                // Also look ahead? Simple Greedy Partition:
+
+                const weight = getSectionWeight(sec, tourPos);
+
+                // If adding this weight pushes us significantly over target, AND we have next days
+                // thresholds can be fuzzy. Let's aim to fill Day 1 to target, then Day 2...
+                if (currentDayIdx < numDays - 1 && (currentDayWeight + weight > targetWeightPerDay * 1.05)) {
+                    // Switch to next day
+                    currentDayIdx++;
+                    currentDayWeight = 0;
+                }
+
+                const dayNum = newDaysPlan[currentDayIdx].day;
+                const newSeq = (currentDayIdx * 1000) + (newDaysPlan[currentDayIdx].sequences.length + 1); // e.g. 1001, 1002, 2001...
+
+                // Assign to new day
+                newDaysPlan[currentDayIdx].sequences.push(newSeq);
+
+                // Update section with NEW sequence
+                // Check if we already have an update for this section in 'updates'
+                const existingUpdateIdx = finalUpdates.findIndex(u => u.id === sec.id);
+                if (existingUpdateIdx !== -1) {
+                    finalUpdates[existingUpdateIdx].test_sequence = String(newSeq);
+                } else {
+                    finalUpdates.push({ ...sec, test_sequence: String(newSeq) });
+                }
+
+                currentDayWeight += weight;
+                const coords = parseCoords(sec.coordinates);
+                if (coords) tourPos = coords;
+            });
+
+            // 5. Apply Updates
+            await onUpdateSections(finalUpdates);
+            setDaysPlan(newDaysPlan); // Triggers save effect
+
+        } catch (error) {
+            console.error("Global Optimize failed:", error);
+            alert(`Global Optimization failed: ${error.message}`);
+        } finally {
+            setIsGlobalOptimizing(false);
+        }
+    };
+
+    const handleGlobalRevert = async () => {
+        if (!isAdmin || !onUpdateSections) return;
+        if (!window.confirm("Revert ALL stops to their original days and sequences?")) return;
+
+        setIsGlobalOptimizing(true);
+        try {
+            // Find sections with original_day
+            const sectionsToRevert = sections.filter(s => s.original_day && s.original_sequence);
+
+            if (sectionsToRevert.length === 0) {
+                alert("No snapshot found to revert.");
+                return;
+            }
+
+            // Reconstruct Days Plan
+            const newDaysPlan = daysPlan.map(d => ({ ...d, sequences: [] }));
+            const updates = [];
+
+            sectionsToRevert.forEach(s => {
+                const dayNum = s.original_day;
+                const seq = Number(s.original_sequence);
+
+                // Find day object
+                const dayObj = newDaysPlan.find(d => d.day === dayNum);
+                if (dayObj) {
+                    dayObj.sequences.push(seq);
+                } else {
+                    // Day might have been deleted? Or plan changed?
+                    // Safe fallback: Add to First Day? Or create day?
+                    // Assuming structure matches.
+                }
+
+                updates.push({
+                    ...s,
+                    test_sequence: s.original_sequence,
+                    original_day: null, // Clear snapshot
+                    original_sequence: null
+                });
+            });
+
+            await onUpdateSections(updates);
+            setDaysPlan(newDaysPlan);
+
+        } catch (error) {
+            console.error("Global Revert failed:", error);
+            alert(`Global Revert failed: ${error.message}`);
+        } finally {
+            setIsGlobalOptimizing(false);
+        }
+    };
+
+    const handleOptimizeDay = async (dayNum) => {
+        if (!isAdmin || !onUpdateSections) return;
+        setOptimizingDay(dayNum);
+
+        try {
+            const dayData = daysPlan.find(d => d.day === dayNum);
+            if (!dayData) return;
+
+            // Derive sections for this day
+            const daySections = sections.filter(s =>
+                dayData.sequences.includes(Number(s.test_sequence))
+            ).sort((a, b) => Number(a.test_sequence) - Number(b.test_sequence));
+
+            if (daySections.length === 0) return;
+
+            const sectionsToOptimize = [...daySections];
+            const hasOriginal = sectionsToOptimize.some(s => s.original_sequence);
+
+            // Determine start position
+            let currentPos = homePosition;
+            if (dayNum > 1) {
+                const prevDay = daysPlan.find(d => d.day === dayNum - 1);
+                if (prevDay && prevDay.sequences && prevDay.sequences.length > 0) {
+                    // Get sections for prev day to find last coord
+                    const prevDaySections = sections.filter(s =>
+                        prevDay.sequences.includes(Number(s.test_sequence))
+                    ).sort((a, b) => Number(a.test_sequence) - Number(b.test_sequence));
+
+                    if (prevDaySections.length > 0) {
+                        const lastSection = prevDaySections[prevDaySections.length - 1];
+                        const coords = parseCoords(lastSection.coordinates);
+                        if (coords) currentPos = coords;
+                    }
+                }
+            }
+
+            // Greedy Nearest Neighbor Sort
+            let sorted = [];
+            let unvisited = [...sectionsToOptimize];
+
+            while (unvisited.length > 0) {
+                let closestIdx = -1;
+                let minDist = Infinity;
+
+                for (let i = 0; i < unvisited.length; i++) {
+                    const coords = parseCoords(unvisited[i].coordinates);
+                    if (!coords) continue;
+                    // calculateDistance expects [lat, lng] arrays
+                    const d = calculateDistance(currentPos, coords);
+                    if (d < minDist) {
+                        minDist = d;
+                        closestIdx = i;
+                    }
+                }
+
+                if (closestIdx !== -1) {
+                    const next = unvisited[closestIdx];
+                    sorted.push(next);
+                    unvisited.splice(closestIdx, 1);
+                    const nextCoords = parseCoords(next.coordinates);
+                    if (nextCoords) currentPos = nextCoords;
+                } else {
+                    // If remaining items have invalid coords, just append them
+                    sorted.push(...unvisited);
+                    break;
+                }
+            }
+
+            // Assign new sequence numbers based on existing set
+            const sequenceNums = sectionsToOptimize.map(s => Number(s.test_sequence)).sort((a, b) => a - b);
+            const updates = sorted.map((s, idx) => {
+                const update = { ...s, test_sequence: String(sequenceNums[idx]) };
+                // Only save original if not already saved (preserves first manual state)
+                if (!hasOriginal) {
+                    update.original_sequence = s.test_sequence;
+                }
+                return update;
+            });
+
+            await onUpdateSections(updates);
+
+        } catch (error) {
+            console.error("Optimization failed:", error);
+            alert(`Failed to optimize route: ${error.message}`);
+        } finally {
+            setOptimizingDay(null);
+        }
+    };
+
+    const handleRevertDay = async (dayNum) => {
+        if (!isAdmin || !onUpdateSections) return;
+        setOptimizingDay(dayNum);
+        try {
+            const dayData = daysPlan.find(d => d.day === dayNum);
+            if (!dayData) return;
+
+            // Derive sections for this day
+            const daySections = sections.filter(s =>
+                dayData.sequences.includes(Number(s.test_sequence))
+            );
+
+            const updates = [];
+            daySections.forEach(s => {
+                if (s.original_sequence) {
+                    updates.push({
+                        ...s,
+                        test_sequence: s.original_sequence,
+                        original_sequence: null // This will be cleaned up by Firestore if merged, or set to null
+                    });
+                }
+            });
+
+            if (updates.length > 0) {
+                await onUpdateSections(updates);
+            }
+        } catch (error) {
+            console.error("Revert failed:", error);
+        } finally {
+            setOptimizingDay(null);
+        }
+    };
     const [isLegendOpen, setIsLegendOpen] = useState(true); // Default open on desktop, will override with CSS for mobile if needed, or check width
+
+    const [isPlanLoaded, setIsPlanLoaded] = useState(false);
 
     // Load shared plan
     useEffect(() => {
         if (projectId) {
+            setIsPlanLoaded(false); // Reset on project change
             getSharedDaysPlan(projectId).then(plan => {
                 if (plan && Array.isArray(plan)) {
                     setDaysPlan(plan);
                 } else {
                     setDaysPlan([]); // Reset if no plan found (fixes switching projects issue)
                 }
+                setIsPlanLoaded(true);
             });
         }
     }, [projectId]);
 
     // Save shared plan (debounced) - Admin Only
     useEffect(() => {
-        if (isAdmin && projectId) {
+        if (isAdmin && projectId && isPlanLoaded) {
             const timer = setTimeout(() => {
                 // Save even if empty to clear it? Or only if modified?
-                // The issue is if we clear it, we want to save that too.
-                // But we need to avoid saving empty on initial load before fetch returns.
-                // For now, let's assume if it changed, we save.
                 if (daysPlan !== undefined) {
                     saveSharedDaysPlan(projectId, daysPlan);
                 }
             }, 1000); // 1s debounce
             return () => clearTimeout(timer);
         }
-    }, [daysPlan, isAdmin, projectId]);
+    }, [daysPlan, isAdmin, projectId, isPlanLoaded]);
 
     const handleAddDay = () => {
         const nextDay = daysPlan.length + 1;
@@ -494,19 +834,12 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
         }
     };
 
-    // Helper: Calculate distance in miles
-    const calculateDistance = (coord1, coord2) => {
-        const R = 3959; // Miles
-        const dLat = (coord2[0] - coord1[0]) * Math.PI / 180;
-        const dLon = (coord2[1] - coord1[1]) * Math.PI / 180;
-        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(coord1[0] * Math.PI / 180) * Math.cos(coord2[0] * Math.PI / 180) *
-            Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return R * c;
-    };
+    // Helper: Calculate distance in miles - MOVED TO MODULE SCOPE
+    // const calculateDistance = ...
 
     // Calculate stats for all days (distance, time, start/end locations)
+    // Uses real OSRM drive durations when available (stored in dayDriveMinutes),
+    // falls back to haversine estimate while OSRM is still loading.
     const dayStats = useMemo(() => {
         const stats = {};
         const sortedDays = [...daysPlan].sort((a, b) => a.day - b.day);
@@ -519,50 +852,82 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
 
             let totalMiles = 0;
             let totalTime = 0;
+            let drivingMinutes = 0;
+            let stopMinutes = 0;
 
             if (daySections.length > 0) {
                 const dayMappable = daySections
                     .map(s => parseCoords(s.coordinates))
                     .filter(c => c);
 
-                // Start -> First Stop
-                if (dayMappable.length > 0) {
-                    totalMiles += calculateDistance(currentLocation, dayMappable[0]);
+                // Use real OSRM duration if available
+                const realDriveMinutes = dayDriveMinutes[day.day];
+
+                if (realDriveMinutes != null) {
+                    // OSRM gave us actual road time — just add stop time
+                    drivingMinutes = realDriveMinutes;
+                    stopMinutes = daySections.length * 15;
+                    totalTime = Math.round(drivingMinutes + stopMinutes);
+
+                    // Still compute straight-line miles for display
+                    if (dayMappable.length > 0) {
+                        totalMiles += calculateDistance(currentLocation, dayMappable[0]);
+                    }
+                    for (let i = 0; i < dayMappable.length - 1; i++) {
+                        totalMiles += calculateDistance(dayMappable[i], dayMappable[i + 1]);
+                    }
+                    if (day.day === sortedDays[sortedDays.length - 1].day && dayMappable.length > 0) {
+                        totalMiles += calculateDistance(dayMappable[dayMappable.length - 1], homePosition);
+                    }
+                } else {
+                    // Fallback estimate - REMOVED per user request
+                    // Just calculate miles for display, validation logic remains
+                    if (dayMappable.length > 0) {
+                        totalMiles += calculateDistance(currentLocation, dayMappable[0]);
+                    }
+                    for (let i = 0; i < dayMappable.length - 1; i++) {
+                        totalMiles += calculateDistance(dayMappable[i], dayMappable[i + 1]);
+                    }
+                    if (day.day === sortedDays[sortedDays.length - 1].day && dayMappable.length > 0) {
+                        totalMiles += calculateDistance(dayMappable[dayMappable.length - 1], homePosition);
+                    }
+                    // drivingMinutes = (totalMiles * 1.2 / 65) * 60;
+                    // stopMinutes = daySections.length * 15;
+                    // totalTime = Math.round(drivingMinutes + stopMinutes);
+
+                    // Mark as loading heavily
+                    drivingMinutes = null;
+                    stopMinutes = daySections.length * 15;
+                    totalTime = 0;
                 }
 
-                // Stop i -> Stop i+1
-                for (let i = 0; i < dayMappable.length - 1; i++) {
-                    totalMiles += calculateDistance(dayMappable[i], dayMappable[i + 1]);
-                }
-
-                // Update current location to last stop
+                // Advance current location to last stop of this day
                 if (dayMappable.length > 0) {
                     currentLocation = dayMappable[dayMappable.length - 1];
                 }
-
-                // If Last Day, add route to Home (optional, but good for round trip estimates)
-                // For now, let's strictly follow the routing logic: 
-                // Routing logic adds return to home ONLY if it's the last day.
-                if (day.day === sortedDays[sortedDays.length - 1].day) {
-                    totalMiles += calculateDistance(currentLocation, homePosition);
-                }
-
-                const drivingMinutes = (totalMiles / 50) * 60; // 50mph avg
-                const stopMinutes = daySections.length * 15; // 15 min per stop
-                totalTime = Math.round(drivingMinutes + stopMinutes);
             }
 
             const h = Math.floor(totalTime / 60);
             const m = totalTime % 60;
+
+            // Breakdown stats
+            const driveH = Math.floor(Math.round(drivingMinutes) / 60);
+            const driveM = Math.round(drivingMinutes) % 60;
+            const stopH = Math.floor(stopMinutes / 60);
+            const stopM = stopMinutes % 60;
+
             stats[day.day] = {
                 miles: totalMiles.toFixed(1),
-                timeStr: `${h}h ${m}m`,
-                totalMinutes: totalTime
+                timeStr: (drivingMinutes === null) ? "Calculating..." : `${h}h ${m}m`,
+                driveStr: (drivingMinutes === null) ? "..." : `${driveH}h ${driveM}m`,
+                stopStr: `${stopH}h ${stopM}m`,
+                totalMinutes: totalTime,
+                isLoading: (drivingMinutes === null)
             };
         });
 
         return stats;
-    }, [daysPlan, sections, homePosition]);
+    }, [daysPlan, sections, homePosition, dayDriveMinutes]);
 
     const getEstimatedTime = (day) => {
         return dayStats[day.day]?.timeStr || "0h 0m";
@@ -608,10 +973,11 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
         return () => { cancelled = true; };
     }, [routeWaypoints]);
 
-    // Fetch routes for each day
+    // Fetch routes for each day (geometry + real OSRM drive durations)
     useEffect(() => {
         const fetchDayRoutes = async () => {
             const newDayRoutes = {};
+            const newDayDriveMinutes = {};
 
             // Sort days to ensure sequence
             const sortedDays = [...daysPlan].sort((a, b) => a.day - b.day);
@@ -634,7 +1000,6 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                 if (dayMappable.length === 0) continue;
 
                 // Waypoints: Previous End -> Stops
-                // This creates a continuous path where Day N starts where Day N-1 ended.
                 const waypoints = [lastLocation, ...dayMappable.map(s => s.latLng)];
 
                 // Update lastLocation for the next day
@@ -646,16 +1011,19 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                 }
 
                 if (waypoints.length >= 2) {
-                    const geometry = await fetchOSRMRoute(waypoints);
-                    if (geometry) {
-                        newDayRoutes[day.day] = geometry;
+                    const result = await fetchOSRMRouteWithDuration(waypoints);
+                    if (result) {
+                        newDayRoutes[day.day] = result.geometry;
+                        // Store actual drive time in minutes (OSRM returns seconds)
+                        newDayDriveMinutes[day.day] = result.durationSeconds / 60;
                     } else {
-                        // Fallback to straight lines
+                        // Fallback to straight lines, no real duration
                         newDayRoutes[day.day] = waypoints;
                     }
                 }
             }
             setDayRoutes(newDayRoutes);
+            setDayDriveMinutes(newDayDriveMinutes);
         };
 
         if (showDaysPlan || highlightedDays.size > 0) {
@@ -906,6 +1274,30 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                             >
                                 {showAllDays ? <Eye size={14} /> : <EyeOff size={14} />}
                             </button>
+
+                            {/* Global Optimize Buttons */}
+                            {isAdmin && (
+                                <>
+                                    <button
+                                        onClick={handleGlobalOptimize}
+                                        className="btn-icon text-primary hover:bg-primary/10 ml-2"
+                                        title="Global Optimize (Balance All Days)"
+                                        disabled={isGlobalOptimizing}
+                                    >
+                                        {isGlobalOptimizing ? <span className="loading loading-spinner loading-xs"></span> : <Zap size={16} />}
+                                    </button>
+                                    {sections.some(s => s.original_day) && (
+                                        <button
+                                            onClick={handleGlobalRevert}
+                                            className="btn-icon text-warning hover:bg-warning/10"
+                                            title="Global Revert"
+                                            disabled={isGlobalOptimizing}
+                                        >
+                                            <RotateCcw size={16} />
+                                        </button>
+                                    )}
+                                </>
+                            )}
                         </div>
                         <button onClick={() => setShowDaysPlan(false)} className="btn-icon"><X size={16} /></button>
                     </div>
@@ -927,10 +1319,18 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                                         className="day-color-dot"
                                         style={{ background: CATEGORY_COLORS[(day.day - 1) % CATEGORY_COLORS.length] }}
                                     />
-                                    <span className="font-bold flex-1">
-                                        Day {day.day}
-                                        <span className="text-xs font-normal text-muted ml-2">({getEstimatedTime(day)})</span>
-                                    </span>
+                                    <div className="flex flex-col flex-1 overflow-hidden">
+                                        <span className="font-bold truncate">
+                                            Day {day.day}
+                                        </span>
+                                        <span className="text-xs text-muted flex flex-col sm:flex-row sm:gap-2">
+                                            {dayStats[day.day]?.isLoading ? (
+                                                <span className="italic">Estimating time...</span>
+                                            ) : (
+                                                <span>Est. Time: {getEstimatedTime(day)}</span>
+                                            )}
+                                        </span>
+                                    </div>
 
                                     <button
                                         className="btn-icon"
@@ -941,15 +1341,41 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                                         {highlightedDays.has(day.day) ? <Eye size={16} /> : <EyeOff size={16} />}
                                     </button>
 
-                                    {/* Admin Only Remove */}
+                                    {/* Admin Action Buttons */}
                                     {isAdmin && (
-                                        <button
-                                            className="btn-icon text-destructive hover:bg-destructive/10"
-                                            onClick={(e) => { e.stopPropagation(); handleRemoveDay(day.day); }}
-                                            title="Remove Day"
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
+                                        <div className="flex items-center gap-1 ml-2" onClick={e => e.stopPropagation()}>
+                                            {(day.sections?.some(s => s.original_sequence) || sections.filter(s => day.sequences?.includes(Number(s.test_sequence))).some(s => s.original_sequence)) ? (
+                                                <button
+                                                    className="btn-icon text-warning hover:bg-warning/10"
+                                                    onClick={() => handleRevertDay(day.day)}
+                                                    title="Revert to original sequence"
+                                                    disabled={optimizingDay === day.day}
+                                                >
+                                                    <RotateCcw size={16} />
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    className="btn-icon text-primary hover:bg-primary/10"
+                                                    onClick={() => handleOptimizeDay(day.day)}
+                                                    title="Auto-Optimize Route"
+                                                    disabled={optimizingDay === day.day}
+                                                >
+                                                    {optimizingDay === day.day ? (
+                                                        <span className="loading loading-spinner loading-xs"></span>
+                                                    ) : (
+                                                        <Zap size={16} />
+                                                    )}
+                                                </button>
+                                            )}
+
+                                            <button
+                                                className="btn-icon text-destructive hover:bg-destructive/10"
+                                                onClick={() => handleRemoveDay(day.day)}
+                                                title="Remove Day"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
                                     )}
 
                                     {expandedDay === day.day ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
