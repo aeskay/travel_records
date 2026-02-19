@@ -1,5 +1,4 @@
-const fetch = require('node-fetch');
-const FormData = require('form-data');
+const FormData = require('form-data'); // Still need this for constructing the multipart body
 
 exports.handler = async (event, context) => {
     // Only allow POST
