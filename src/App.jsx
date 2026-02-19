@@ -93,7 +93,7 @@ function AppContent() {
   // Admin Check
   const isGlobalAdmin = user?.email === 'samuel.alalade@ttu.edu';
   const isAdmin = useMemo(() => {
-    if (!currentProject) return false;
+    if (!user || !currentProject) return false;
     if (isGlobalAdmin) return true;
     if (currentProject.createdBy === user.username) return true;
     return currentProject.users?.find(u => u.email === user.email)?.role === 'admin';
