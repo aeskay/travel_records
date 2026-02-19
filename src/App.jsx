@@ -109,6 +109,9 @@ function AppContent() {
   const handleChangeStatus = async (section, newStatus) => {
     if (!isAdmin) return;
     const updated = { ...section, status: newStatus };
+    if (newStatus === 'Evaluated') {
+      updated.evaluatedAt = new Date().toISOString();
+    }
     await addSection(updated, user.username, currentProject.id);
     loadSections();
   };
@@ -246,6 +249,8 @@ function AppContent() {
               username={user?.username}
               isAdmin={isAdmin}
               projectId={currentProject.id}
+              project={currentProject}
+              onUpdateProject={refreshProject}
             />
           ) : currentView === 'settings' ? (
             <SettingsView

@@ -156,9 +156,16 @@ const DetailEditor = ({ section, onUpdate }) => {
 
                 recognitionRef.current.onerror = (event) => {
                     console.error("Speech recognition error", event.error);
+                    if (event.error === 'not-allowed') {
+                        alert("Microphone access denied for speech recognition.");
+                    } else if (event.error === 'network') {
+                        // Network error is common in production if offline or unstable
+                        console.warn("Speech recognition network error - transcript might be incomplete.");
+                    }
                 };
 
                 recognitionRef.current.onend = () => {
+                    // Recognition ended
                 };
 
                 try {
@@ -178,17 +185,18 @@ const DetailEditor = ({ section, onUpdate }) => {
             };
 
             mediaRecorderRef.current.onstop = () => {
-                // Wait a moment for speech recognition to finalize its last result
-                setTimeout(() => {
-                    // Stop speech recognition if active
-                    if (recognitionRef.current) {
-                        try {
-                            recognitionRef.current.stop();
-                        } catch (e) {
-                            // Ignore error if already stopped
-                        }
+                // EXPLICITLY stop recognition if it hasn't already
+                if (recognitionRef.current) {
+                    try {
+                        recognitionRef.current.stop();
+                    } catch (e) {
+                        // Ignore
                     }
+                }
 
+                // Wait a moment for speech recognition to finalize its last result
+                // Increased wait time for production latency
+                setTimeout(() => {
                     const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
                     const reader = new FileReader();
                     reader.onloadend = () => {
@@ -203,7 +211,7 @@ const DetailEditor = ({ section, onUpdate }) => {
 
                     // Stop tracks AFTER giving recognition a chance to finish
                     stream.getTracks().forEach(track => track.stop());
-                }, 500); // 500ms delay to catch final partials
+                }, 1000); // Increased from 500ms to 1000ms for stability
             };
 
             mediaRecorderRef.current.start();
@@ -216,8 +224,18 @@ const DetailEditor = ({ section, onUpdate }) => {
 
     const stopRecording = () => {
         if (mediaRecorderRef.current && isRecording) {
+            // Signal intent to stop everything
             mediaRecorderRef.current.stop();
             setIsRecording(false);
+
+            // Also stop recognition immediately to prevent hanging
+            if (recognitionRef.current) {
+                try {
+                    recognitionRef.current.stop();
+                } catch (e) {
+                    // Ignore
+                }
+            }
         }
     };
 
@@ -262,7 +280,8 @@ const DetailEditor = ({ section, onUpdate }) => {
     };
 
     const handleSaveNew = async () => {
-        if (!editorRef.current || !user || isSaving) return;
+        // Remove isSaving check to allow multiple sends
+        if (!editorRef.current || !user) return;
         let content = editorRef.current.innerHTML;
 
         const hasText = editorRef.current.textContent.trim().length > 0;
@@ -289,9 +308,9 @@ const DetailEditor = ({ section, onUpdate }) => {
                 timestamp: timestamp.toISOString(),
             };
 
-            // Optimistic Update: Show immediately
+            // Optimistic Update: Show immediately with pending status
             const tempId = 'temp-' + Date.now();
-            setDetails(prev => [...prev, { ...newDetail, id: tempId }]);
+            setDetails(prev => [...prev, { ...newDetail, id: tempId, status: 'sending' }]);
 
             // Clear editor immediately
             editorRef.current.innerHTML = '';
@@ -312,6 +331,7 @@ const DetailEditor = ({ section, onUpdate }) => {
             // No need to reload - subscription handles it
         } catch (err) {
             console.error("Error saving note:", err);
+            // Optionally update the temp item to show error state, but for now we trust retry or user awareness
             alert("Failed to save note: " + err.message);
         } finally {
             setIsSaving(false);
@@ -462,8 +482,8 @@ const DetailEditor = ({ section, onUpdate }) => {
                         {isRecording && <span className="text-xs text-red-500 font-medium">Recording...</span>}
                     </div>
 
-                    <button onClick={handleSaveNew} className="btn btn-primary px-4 py-1.5 text-sm" disabled={isSaving}>
-                        <Save size={16} /> {isSaving ? 'Saving...' : 'Add Note'}
+                    <button onClick={handleSaveNew} className="btn btn-primary px-4 py-1.5 text-sm">
+                        <Save size={16} /> Add Note
                     </button>
                 </div>
             </div>
@@ -502,9 +522,16 @@ const HistoryItem = ({ detail, isEditing, onEditStart, onEditCancel, onEditSave,
     return (
         <div className={`timeline-content ${isEditing ? 'ring-2 ring-[hsl(var(--primary))]' : ''}`}>
             <div className="flex justify-between items-center mb-2 pb-2 border-b border-[hsl(var(--border)/0.5)]">
-                <span className="timeline-date">
-                    {new Date(detail.timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-                </span>
+                <div className="flex items-center gap-2">
+                    <span className="timeline-date">
+                        {new Date(detail.timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                    </span>
+                    {(detail.id.toString().startsWith('temp-') || detail.status === 'sending') && (
+                        <span className="text-[10px] bg-yellow-100 text-yellow-700 px-1 rounded flex items-center gap-1">
+                            Sending...
+                        </span>
+                    )}
+                </div>
 
                 <div className="flex gap-1 opacity-0 hover:opacity-100 transition-opacity group-hover:opacity-100">
                     {isEditing ? (
