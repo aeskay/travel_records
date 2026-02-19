@@ -49,8 +49,6 @@ export const printSections = async (sections, username) => {
                     </tr>
                     <tr>
                         <td><strong>GPS:</strong> ${section.coordinates || 'N/A'}</td>
-                        <td><strong>Maint. Section:</strong> ${section.maintenance_section || 'N/A'}</td>
-                        <td><strong>Limits:</strong> ${section.limits || 'N/A'}</td>
                     </tr>
                 </table>
                 <h2>Activity & Notes</h2>

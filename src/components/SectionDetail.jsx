@@ -133,73 +133,62 @@ const SectionDetail = ({ section, onUpdate, allTypes, onChangeStatus, onChangeTy
                                 )}
                             </div>
                         </div>
-                        {section.maintenance_section && (
-                            <div className="flex flex-col gap-1">
-                                <span className="text-xs font-semibold text-muted uppercase tracking-wider">Maint. Section</span>
-                                <span className="font-medium">{section.maintenance_section}</span>
-                            </div>
-                        )}
-                        {section.limits && (
-                            <div className="flex flex-col gap-1">
-                                <span className="text-xs font-semibold text-muted uppercase tracking-wider">Limits</span>
-                                <span className="text-sm">{section.limits}</span>
-                            </div>
-                        )}
                     </div>
                 </div>
-
-                {/* Main Content (Editor) - Full Width */}
-                <div className="card dashboard-main-card">
-                    <DetailEditor section={section} onUpdate={onUpdate} />
-                </div>
-
             </div>
 
-            {/* Private Note Floating Action Button */}
-            <button
-                onClick={() => setShowPrivateNote(true)}
-                className="fixed bottom-6 right-6 btn btn-circle btn-primary shadow-lg z-50 w-14 h-14"
-                title="Private Note" style={{ marginTop: '10px' }}
-            >
-                <BookLock size={24} />
-            </button>
+            {/* Main Content (Editor) - Full Width */}
+            <div className="card dashboard-main-card">
+                <DetailEditor section={section} onUpdate={onUpdate} />
+            </div>
 
-            {/* Private Note Modal */}
-            {
-                showPrivateNote && (
-                    <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
-                        <div className="bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
-                            <div className="flex justify-between items-center p-4 border-b border-[hsl(var(--border))]">
-                                <h3 className="text-lg font-bold flex items-center gap-2">
-                                    <BookLock className="text-[hsl(var(--primary))]" size={20} />
-                                    Private Note
-                                </h3>
-                                <button onClick={() => setShowPrivateNote(false)} className="btn btn-ghost btn-sm btn-circle">
-                                    <X size={20} />
-                                </button>
-                            </div>
-                            <div className="p-4 flex-1 flex flex-col gap-2">
-                                <p className="text-sm text-muted">
-                                    This note is only visible to you ({user?.username}).
-                                </p>
-                                <textarea
-                                    className="w-full flex-1 min-h-[200px] p-3 rounded-md bg-[hsl(var(--background))] border border-[hsl(var(--input))] resize-none focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]"
-                                    placeholder="Write your private thoughts here..."
-                                    value={privateNoteContent}
-                                    onChange={(e) => setPrivateNoteContent(e.target.value)}
-                                />
-                            </div>
-                            <div className="p-4 border-t border-[hsl(var(--border))] flex justify-end gap-2">
-                                <button onClick={() => setShowPrivateNote(false)} className="btn btn-ghost">Cancel</button>
-                                <button onClick={handleSavePrivateNote} className="btn btn-primary" disabled={loadingNote}>
-                                    <Save size={16} />
-                                    {loadingNote ? 'Saving...' : 'Save Note'}
-                                </button>
-                            </div>
-                        </div>
+        </div>
+
+            {/* Private Note Floating Action Button */ }
+    <button
+        onClick={() => setShowPrivateNote(true)}
+        className="fixed bottom-6 right-6 btn btn-circle btn-primary shadow-lg z-50 w-14 h-14"
+        title="Private Note" style={{ marginTop: '10px' }}
+    >
+        <BookLock size={24} />
+    </button>
+
+    {/* Private Note Modal */ }
+    {
+        showPrivateNote && (
+            <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
+                <div className="bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
+                    <div className="flex justify-between items-center p-4 border-b border-[hsl(var(--border))]">
+                        <h3 className="text-lg font-bold flex items-center gap-2">
+                            <BookLock className="text-[hsl(var(--primary))]" size={20} />
+                            Private Note
+                        </h3>
+                        <button onClick={() => setShowPrivateNote(false)} className="btn btn-ghost btn-sm btn-circle">
+                            <X size={20} />
+                        </button>
                     </div>
-                )
-            }
+                    <div className="p-4 flex-1 flex flex-col gap-2">
+                        <p className="text-sm text-muted">
+                            This note is only visible to you ({user?.username}).
+                        </p>
+                        <textarea
+                            className="w-full flex-1 min-h-[200px] p-3 rounded-md bg-[hsl(var(--background))] border border-[hsl(var(--input))] resize-none focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]"
+                            placeholder="Write your private thoughts here..."
+                            value={privateNoteContent}
+                            onChange={(e) => setPrivateNoteContent(e.target.value)}
+                        />
+                    </div>
+                    <div className="p-4 border-t border-[hsl(var(--border))] flex justify-end gap-2">
+                        <button onClick={() => setShowPrivateNote(false)} className="btn btn-ghost">Cancel</button>
+                        <button onClick={handleSavePrivateNote} className="btn btn-primary" disabled={loadingNote}>
+                            <Save size={16} />
+                            {loadingNote ? 'Saving...' : 'Save Note'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )
+    }
         </div >
     );
 };

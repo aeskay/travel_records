@@ -11,6 +11,30 @@ const ImportModal = ({ onClose, onImportComplete }) => {
     const [toggledDuplicates, setToggledDuplicates] = useState(new Set());
     const fileInputRef = useRef(null);
 
+    const recognizedFields = [
+        { label: 'Section ID', required: true },
+        { label: 'Section Type', required: false },
+        { label: 'Highway', required: false },
+        { label: 'District', required: false },
+        { label: 'County', required: false },
+        { label: 'City', required: false },
+        { label: 'GPS Coordinates', required: false },
+        { label: 'Test Sequence', required: false },
+    ];
+
+    const handleDownloadTemplate = () => {
+        const headers = recognizedFields.map(f => f.label).join(',');
+        const blob = new Blob([headers], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', 'sections_template.csv');
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     const handleFileChange = async (e) => {
         const selectedFile = e.target.files[0];
         if (!selectedFile) return;
@@ -88,11 +112,33 @@ const ImportModal = ({ onClose, onImportComplete }) => {
                     )}
 
                     {!report && !isAnalyzing && (
-                        <div className="file-drop-area" onClick={() => fileInputRef.current?.click()}>
-                            <input type="file" accept=".csv" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
-                            <div style={{ marginBottom: '1rem', color: 'var(--color-primary)' }}><Upload size={32} /></div>
-                            <p style={{ fontSize: '1.1rem', fontWeight: 500 }}>Click to upload CSV</p>
-                            <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>or drag and drop file here</p>
+                        <div className="import-setup">
+                            <div className="file-drop-area" onClick={() => fileInputRef.current?.click()}>
+                                <input type="file" accept=".csv" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
+                                <div style={{ marginBottom: '1rem', color: 'var(--color-primary)' }}><Upload size={32} /></div>
+                                <p style={{ fontSize: '1.1rem', fontWeight: 500 }}>Click to upload CSV</p>
+                                <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>or drag and drop file here</p>
+                            </div>
+
+                            <div className="import-info-box">
+                                <div className="info-header">
+                                    <h3>CSV Structure</h3>
+                                    <button className="btn btn-glass btn-sm" onClick={handleDownloadTemplate} title="Download Excel-ready template">
+                                        Download Template
+                                    </button>
+                                </div>
+                                <p className="info-description">
+                                    Your CSV should include the following columns.
+                                    Extra columns will be saved as additional section details.
+                                </p>
+                                <div className="fields-grid">
+                                    {recognizedFields.map(f => (
+                                        <div key={f.label} className={`field-tag ${f.required ? 'required' : ''}`}>
+                                            {f.label} {f.required && <span className="req-star">*</span>}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
                     )}
 

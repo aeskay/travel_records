@@ -1913,3 +1913,72 @@ select.input option {
         box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
     }
 }
+
+/* --- Import Modal Enhancements --- */
+.import-setup {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.import-info-box {
+    background-color: hsl(var(--muted)/0.2);
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    padding: 1.25rem;
+}
+
+.info-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.info-header h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.info-description {
+    font-size: 0.875rem;
+    color: hsl(var(--muted-foreground));
+    margin-bottom: 1rem;
+    line-height: 1.4;
+}
+
+.fields-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.field-tag {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.625rem;
+    background-color: hsl(var(--secondary));
+    color: hsl(var(--secondary-foreground));
+    border-radius: 9999px;
+    border: 1px solid hsl(var(--border));
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.field-tag.required {
+    border-color: hsl(var(--primary)/0.5);
+    background-color: hsl(var(--primary)/0.1);
+    color: hsl(var(--primary));
+    font-weight: 600;
+}
+
+.req-star {
+    color: hsl(var(--destructive));
+    font-weight: bold;
+}
+
+.btn-sm {
+    padding: 0.25rem 0.75rem;
+    font-size: 0.75rem;
+}

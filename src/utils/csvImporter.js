@@ -54,8 +54,6 @@ export const parseCSV = (file) => {
                     { field: 'county', headers: ['County'] },
                     { field: 'city', headers: ['City'] },
                     { field: 'coordinates', headers: ['GPS Coordinates', 'GPS', 'Coordinates', 'LatLong'] },
-                    { field: 'maintenance_section', headers: ['Maintenance Section', 'Maint Section', 'Maintenance'] },
-                    { field: 'limits', headers: ['Limits', 'Limit'] },
                     { field: 'test_sequence', headers: ['Test Sequence', 'TestSequence', 'Sequence'] },
                 ];
 
