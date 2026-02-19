@@ -244,10 +244,7 @@ const DetailEditor = ({ section, onUpdate }) => {
 
                         addLog("Transcript length: " + transcriptRef.current.length);
 
-                        // Attach debug logs to the note content for mobile debugging
-                        const logsHtml = `<details style="margin-top: 0.5rem; font-size: 0.7rem; color: gray; font-family: monospace;"><summary>Debug Logs</summary><pre>${debugLogs.join('\n')}</pre></details>`;
-
-                        const audioHtml = `<br/><div class="audio-note-container" style="border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 0.5rem; background: hsl(var(--card)); margin: 0.5rem 0;"><audio controls src="${reader.result}" style="width: 100%; margin-bottom: 0.5rem;"></audio>${transcriptHtml}${logsHtml}</div><br/>`;
+                        const audioHtml = `<br/><div class="audio-note-container" style="border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 0.5rem; background: hsl(var(--card)); margin: 0.5rem 0;"><audio controls src="${reader.result}" style="width: 100%; margin-bottom: 0.5rem;"></audio>${transcriptHtml}</div><br/>`;
                         insertHtmlAtCursor(audioHtml);
                     };
                     reader.readAsDataURL(blob);
