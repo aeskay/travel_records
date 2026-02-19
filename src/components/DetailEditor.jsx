@@ -138,57 +138,95 @@ const DetailEditor = ({ section, onUpdate }) => {
         setDebugLogs(prev => [new Date().toLocaleTimeString() + ': ' + msg, ...prev].slice(0, 20));
     };
 
+    const workerRef = useRef(null);
+
+    // Initialize Worker
+    useEffect(() => {
+        if (!workerRef.current) {
+            workerRef.current = new Worker(new URL('../workers/whisper.worker.js', import.meta.url), {
+                type: 'module'
+            });
+
+            workerRef.current.onmessage = (e) => {
+                const { status, data, transcript, message } = e.data;
+                if (status === 'progress') {
+                    if (data.status === 'initiate') {
+                        addLog(`Initializing model (${data.file})...`);
+                    } else if (data.status === 'progress') {
+                        // Optional: Show percentage
+                    }
+                } else if (status === 'complete') {
+                    addLog(`Transcription complete: ${transcript}`);
+
+                    const text = transcript;
+                    const transcriptHtml = text && text.trim()
+                        ? `<details open style="margin-top: 0.5rem; border: 1px solid hsl(var(--border)); padding: 0.5rem; border-radius: 4px; background: hsl(var(--card));"><summary style="cursor: pointer; font-weight: bold; font-size: 0.8rem; color: hsl(var(--muted-foreground)); user-select: none;">Transcript</summary><div style="margin-top: 0.5rem; white-space: pre-wrap; font-size: 0.9rem; color: hsl(var(--foreground)); line-height: 1.5;">${text}</div></details>`
+                        : '';
+
+                    // We need to access the blob/reader result here. 
+                    // Since this is async/decoupled, we can't easily access the reader.result from the worker callback 
+                    // unless we store it in a ref or if we insert just the text.
+                    // BETTER PATTERN: Insert the text at cursor immediately.
+                    // However, we want the AUDIO + TEXT combo.
+
+                    // Workaround: We will use a temp ref to store the pending audio HTML structure until text arrives, 
+                    // OR just insert the text below the audio player IF we insert the audio player immediately on stop.
+                    // Let's do this: Insert audio player immediately. Insert text when it arrives.
+
+                    // Actually, simpler: We already have the logic to insert combined HTML. 
+                    // Let's wait for transcription before inserting anything, like before, but we need the reader result.
+                    // We can pass the reader result string to the worker? No, too big.
+                    // We can save the reader result in a ref `pendingAudioDataUrl`.
+
+                    if (pendingAudioUrlRef.current) {
+                        const audioHtml = `<br/><div class="audio-note-container" style="border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 0.5rem; background: hsl(var(--card)); margin: 0.5rem 0;"><audio controls src="${pendingAudioUrlRef.current}" style="width: 100%; margin-bottom: 0.5rem;"></audio>${transcriptHtml}</div><br/>`;
+                        insertHtmlAtCursor(audioHtml);
+                        pendingAudioUrlRef.current = null; // Clear
+                    } else {
+                        // Fallback just text
+                        insertHtmlAtCursor(`<p>${text}</p>`);
+                    }
+
+                    setTranscribing(false);
+                } else if (status === 'error') {
+                    addLog(`Error: ${message}`);
+                    setTranscribing(false);
+                    alert("Transcription failed: " + message);
+                }
+            };
+        }
+
+        return () => {
+            if (workerRef.current) workerRef.current.terminate();
+        };
+    }, []);
+
+    const pendingAudioUrlRef = useRef(null);
+
     const transcribeAudio = async (audioBlob) => {
         setTranscribing(true);
-        addLog("Preparing audio for Whisper...");
+        addLog("Decoding audio for Whisper...");
 
         try {
-            // Convert to Base64
+            // 1. Read blob as Data URL for the UI Player later
             const reader = new FileReader();
             reader.readAsDataURL(audioBlob);
             reader.onloadend = async () => {
-                const base64Audio = reader.result.split(',')[1]; // Remove data:audio/webm;base64, prefix
+                pendingAudioUrlRef.current = reader.result;
 
-                try {
-                    addLog("Sending to server...");
-                    const response = await fetch('/.netlify/functions/transcribe', {
-                        method: 'POST',
-                        body: JSON.stringify({ audio: base64Audio }),
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                    });
+                // 2. Decode for Whisper (16kHz)
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                const arrayBuffer = await audioBlob.arrayBuffer();
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                let channelData = audioBuffer.getChannelData(0); // Float32Array
 
-                    if (!response.ok) {
-                        const errorData = await response.json().catch(() => ({}));
-                        throw new Error(errorData.error || `Server error: ${response.status}`);
-                    }
-
-                    const data = await response.json();
-                    if (data.text) {
-                        addLog("Transcription received: " + data.text.substring(0, 20) + "...");
-
-                        // Insert transcription into the note
-                        const transcript = data.text;
-                        const transcriptHtml = transcript && transcript.trim()
-                            ? `<details open style="margin-top: 0.5rem; border: 1px solid hsl(var(--border)); padding: 0.5rem; border-radius: 4px; background: hsl(var(--card));"><summary style="cursor: pointer; font-weight: bold; font-size: 0.8rem; color: hsl(var(--muted-foreground)); user-select: none;">Transcript</summary><div style="margin-top: 0.5rem; white-space: pre-wrap; font-size: 0.9rem; color: hsl(var(--foreground)); line-height: 1.5;">${transcript}</div></details>`
-                            : '';
-
-                        const audioHtml = `<br/><div class="audio-note-container" style="border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 0.5rem; background: hsl(var(--card)); margin: 0.5rem 0;"><audio controls src="${reader.result}" style="width: 100%; margin-bottom: 0.5rem;"></audio>${transcriptHtml}</div><br/>`;
-                        insertHtmlAtCursor(audioHtml);
-                    } else {
-                        addLog("No transcription returned (empty).");
-                    }
-                } catch (error) {
-                    console.error("Transcription failed during fetch:", error);
-                    addLog("Transcription failed: " + error.message);
-                    alert("Transcription failed: " + error.message);
-                } finally {
-                    setTranscribing(false);
-                }
+                // 3. Send to worker
+                addLog("Sending decoded audio to worker...");
+                workerRef.current.postMessage({ audio: channelData });
             };
         } catch (error) {
             console.error("Error processing audio:", error);
+            addLog("Error: " + error.message);
             setTranscribing(false);
         }
     };
@@ -221,7 +259,6 @@ const DetailEditor = ({ section, onUpdate }) => {
 
                 const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
 
-                // Start transcription
                 transcribeAudio(blob);
             };
 
@@ -505,7 +542,7 @@ const DetailEditor = ({ section, onUpdate }) => {
                             {isRecording ? <Square size={18} fill="currentColor" /> : <Mic size={18} />}
                         </button>
                         {isRecording && <span className="text-xs text-red-500 font-medium">Recording...</span>}
-                        {transcribing && <span className="text-xs text-blue-500 font-medium animate-pulse">Transcribing...</span>}
+                        {transcribing && <span className="text-xs text-blue-500 font-medium animate-pulse">Processing...</span>}
                     </div>
 
                     <button onClick={handleSaveNew} className="btn btn-primary px-4 py-1.5 text-sm" disabled={transcribing}>

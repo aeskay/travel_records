@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  optimizeDeps: {
+    exclude: ['lucide-react', '@xenova/transformers'],
+  },
   plugins: [
     react(),
     VitePWA({
