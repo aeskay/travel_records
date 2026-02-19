@@ -4,7 +4,7 @@ import { parseCSV, analyzeImport } from '../utils/csvImporter';
 import { addSections } from '../db';
 import { useUser } from '../context/UserContext';
 
-const ImportModal = ({ onClose, onImportComplete }) => {
+const ImportModal = ({ onClose, onImportComplete, projectId }) => {
     const { user } = useUser();
     const [report, setReport] = useState(null);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -67,13 +67,13 @@ const ImportModal = ({ onClose, onImportComplete }) => {
 
             // 1. Import brand new sections (full write)
             if (report.newOrUpdates.length > 0) {
-                await addSections(report.newOrUpdates, user.username);
+                await addSections(report.newOrUpdates, user.username, { projectId });
             }
 
             // 2. Merge sections with new fields (merge mode — appends, doesn't overwrite)
             if (report.mergeable.length > 0) {
                 const mergeData = report.mergeable.map(m => m.newSection);
-                await addSections(mergeData, user.username, { merge: true });
+                await addSections(mergeData, user.username, { merge: true, projectId });
             }
 
             // 3. Force-import any toggled duplicates
@@ -84,7 +84,7 @@ const ImportModal = ({ onClose, onImportComplete }) => {
                 }
             });
             if (forcedDuplicates.length > 0) {
-                await addSections(forcedDuplicates, user.username);
+                await addSections(forcedDuplicates, user.username, { projectId });
             }
 
             onImportComplete();

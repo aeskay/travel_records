@@ -296,6 +296,7 @@ function AppContent() {
         <ImportModal
           onClose={() => setIsImportModalOpen(false)}
           onImportComplete={handleImportComplete}
+          projectId={currentProject?.id}
         />
       )}
 
