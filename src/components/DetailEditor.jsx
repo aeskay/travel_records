@@ -257,7 +257,6 @@ const DetailEditor = ({ section, onUpdate }) => {
             };
 
             mediaRecorderRef.current.start();
-            mediaRecorderRef.current.start();
             setIsRecording(true);
             isRecordingRef.current = true;
         } catch (err) {
