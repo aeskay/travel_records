@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getDetails, addDetail, updateDetail, deleteDetail, addSection, subscribeToDetails } from '../db';
-import { History, Save, Edit3, Camera, Mic, X, Image as LucideImage, Square, Trash2, Check, RotateCcw } from 'lucide-react';
+import { History, Save, Edit3, Camera, Mic, X, Image as LucideImage, Square, Trash2, Check, RotateCcw, RefreshCw } from 'lucide-react';
 import ImageResizer from './ImageResizer';
 import ImageLightbox from './ImageLightbox';
 import { useUser } from '../context/UserContext';
@@ -18,9 +18,9 @@ const DetailEditor = ({ section, onUpdate }) => {
     const {
         startRecording,
         stopRecording,
+        transcribeAudio,
         status: voiceStatus,
-        transcript,
-        audioBlob,
+        modelProgress,
         error: voiceError
     } = useVoiceLogger();
 
@@ -66,61 +66,21 @@ const DetailEditor = ({ section, onUpdate }) => {
     const handleToggleRecording = async () => {
         if (voiceStatus === 'recording') {
             try {
-                // stopRecording now returns { blob, transcriptionPromise } immediately
-                const result = await stopRecording();
-                if (!result) return;
+                const blob = await stopRecording();
+                if (!blob) return;
 
-                const { blob, transcriptionPromise } = result;
-
-                // 1. Immediate UI Update: Insert Audio Player + Placeholder
                 const reader = new FileReader();
                 reader.readAsDataURL(blob);
                 reader.onloadend = () => {
                     const base64Audio = reader.result;
-                    const placeholderId = `transcript-${Date.now()}`;
-
                     const audioHtml = `
                         <br/>
                         <div class="audio-note-container" style="border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 0.5rem; background: hsl(var(--card)); margin: 0.5rem 0;">
                             <audio controls src="${base64Audio}" style="width: 100%; margin-bottom: 0.5rem;"></audio>
-                            <div id="${placeholderId}" style="font-size: 0.75rem; color: hsl(var(--muted-foreground)); font-style: italic;">
-                                <span class="animate-pulse">Processing transcript...</span>
-                            </div>
                         </div>
                         <br/>
                     `;
                     insertHtmlAtCursor(audioHtml);
-
-                    // 2. Background Process: Wait for transcript
-                    transcriptionPromise
-                        .then((text) => {
-                            console.log('[DetailEditor] Received transcript:', text);
-                            const rawText = text ?? '';
-                            const cleanText = WHISPER_SENTINEL_RE.test(rawText.trim()) ? '' : rawText.trim();
-
-                            // Find the placeholder in the editor and update it
-                            // We access the DOM directly because contentEditable can change
-                            const placeholderEl = editorRef.current?.querySelector(`#${placeholderId}`);
-                            if (placeholderEl) {
-                                if (cleanText) {
-                                    placeholderEl.outerHTML = `
-                                        <details open style="margin-top: 0.5rem; border: 1px solid hsl(var(--border)); padding: 0.5rem; border-radius: 4px; background: hsl(var(--card));">
-                                            <summary style="cursor: pointer; font-weight: bold; font-size: 0.8rem; color: hsl(var(--muted-foreground)); user-select: none;">Transcript</summary>
-                                            <div style="margin-top: 0.5rem; white-space: pre-wrap; font-size: 0.9rem; color: hsl(var(--foreground)); line-height: 1.5;">${cleanText}</div>
-                                        </details>
-                                     `;
-                                } else {
-                                    placeholderEl.innerHTML = '(audio recorded — no speech transcript)';
-                                }
-                            }
-                        })
-                        .catch((err) => {
-                            console.error("Transcription failed in background:", err);
-                            const placeholderEl = editorRef.current?.querySelector(`#${placeholderId}`);
-                            if (placeholderEl) {
-                                placeholderEl.innerHTML = `<span style="color: red;">Transcription failed</span>`;
-                            }
-                        });
                 };
             } catch (err) {
                 console.error("Failed to stop recording:", err);
@@ -375,6 +335,7 @@ const DetailEditor = ({ section, onUpdate }) => {
                         <HistoryItem
                             detail={detail}
                             isEditing={editingId === detail.id}
+                            transcribeAudio={transcribeAudio}
                             onEditStart={() => setEditingId(detail.id)}
                             onEditCancel={() => setEditingId(null)}
                             onEditSave={(content) => handleUpdate(detail.id, content)}
@@ -468,8 +429,8 @@ const DetailEditor = ({ section, onUpdate }) => {
                         {voiceStatus === 'transcribing' && <span className="text-xs text-blue-500 font-medium animate-pulse">Processing...</span>}
                     </div>
 
-                    <button onClick={handleSaveNew} className="btn btn-primary px-4 py-1.5 text-sm" disabled={voiceStatus === 'transcribing' || voiceStatus === 'recording'}>
-                        {voiceStatus === 'transcribing' ? 'Wait...' : <><Save size={16} /> Add Note</>}
+                    <button onClick={handleSaveNew} className="btn btn-primary px-4 py-1.5 text-sm" disabled={voiceStatus === 'recording'}>
+                        <Save size={16} /> Add Note
                     </button>
                 </div>
             </div>
@@ -483,9 +444,68 @@ const DetailEditor = ({ section, onUpdate }) => {
 };
 
 // Subcomponent for individual history items to handle edit state
-const HistoryItem = ({ detail, isEditing, onEditStart, onEditCancel, onEditSave, onDelete, onImageClick }) => {
+const HistoryItem = ({ detail, isEditing, transcribeAudio, onEditStart, onEditCancel, onEditSave, onDelete, onImageClick }) => {
     const itemRef = useRef(null);
     const [selectedImg, setSelectedImg] = useState(null);
+    const [isTranscribing, setIsTranscribing] = useState(false);
+
+    // WHISPER_SENTINEL_RE for internal filtering
+    const WHISPER_SENTINEL_RE = /^\s*(\[BLANK_AUDIO\]|\[SILENCE\]|\[ Silence \]|no speech detected\.?|\(no speech\)|\.)?\s*$/i;
+
+    const hasAudio = detail.content.includes('<audio');
+    const isStuck = detail.content.includes('Processing transcript');
+    const hasTranscript = (detail.content.includes('<details') || detail.content.includes('no speech transcript')) && !isStuck;
+
+    const handleTranscribe = async () => {
+        if (isTranscribing) return;
+
+        // Find the audio source in the HTML
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(detail.content, 'text/html');
+        const audioEl = doc.querySelector('audio');
+        if (!audioEl || !audioEl.src) {
+            alert("No audio source found in this note.");
+            return;
+        }
+
+        setIsTranscribing(true);
+        try {
+            // Convert data URL back to blob
+            const res = await fetch(audioEl.src);
+            const blob = await res.blob();
+
+            const text = await transcribeAudio(blob);
+            const rawText = text ?? '';
+            const cleanText = WHISPER_SENTINEL_RE.test(rawText.trim()) ? '' : rawText.trim();
+
+            const transcriptHtml = cleanText
+                ? `
+                    <details open style="margin-top: 0.5rem; border: 1px solid hsl(var(--border)); padding: 0.5rem; border-radius: 4px; background: hsl(var(--card));">
+                        <summary style="cursor: pointer; font-weight: bold; font-size: 0.8rem; color: hsl(var(--muted-foreground)); user-select: none;">Transcript</summary>
+                        <div style="margin-top: 0.5rem; white-space: pre-wrap; font-size: 0.9rem; color: hsl(var(--foreground)); line-height: 1.5;">${cleanText}</div>
+                    </details>
+                `
+                : `<div style="font-size: 0.75rem; color: hsl(var(--muted-foreground)); margin-top: 0.25rem; font-style: italic;">(audio recorded — no speech transcript)</div>`;
+
+            // Strip old markers if present
+            let baseContent = detail.content;
+            if (isStuck) {
+                // Remove the processing div and the placeholder ID div if present
+                baseContent = baseContent.replace(/<div[^>]*?>\s*(<span[^>]*?>)?Processing transcript\.{3}(<\/span>)?\s*<\/div>/gi, '');
+                // Also remove any empty audio-note-containers or clean them up
+                // (Optional but safer to just append to baseContent and let user edit)
+            }
+
+            // Append to content
+            const newContent = baseContent + transcriptHtml;
+            await onEditSave(newContent);
+        } catch (err) {
+            console.error("Manual transcription failed:", err);
+            alert("Transcription failed: " + err.message);
+        } finally {
+            setIsTranscribing(false);
+        }
+    };
 
     useEffect(() => {
         if (isEditing && itemRef.current) {
@@ -531,6 +551,16 @@ const HistoryItem = ({ detail, isEditing, onEditStart, onEditCancel, onEditSave,
                         </>
                     ) : (
                         <>
+                            {hasAudio && !hasTranscript && (
+                                <button
+                                    onClick={handleTranscribe}
+                                    disabled={isTranscribing}
+                                    className="btn btn-ghost p-1 text-blue-500 hover:text-blue-600 flex items-center gap-1 text-[10px] font-bold"
+                                    title="Transcribe Audio"
+                                >
+                                    {isTranscribing ? <RefreshCw size={12} className="animate-spin" /> : "✨ Transcribe"}
+                                </button>
+                            )}
                             <button onClick={onEditStart} className="btn btn-ghost p-1 text-muted hover:text-[hsl(var(--foreground))]" title="Edit">
                                 <Edit3 size={14} />
                             </button>

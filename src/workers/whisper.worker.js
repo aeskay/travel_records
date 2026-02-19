@@ -21,7 +21,7 @@ function isSentinel(text) {
 
 class PipelineSingleton {
     static task = 'automatic-speech-recognition';
-    static model = 'Xenova/whisper-tiny.en';
+    static model = 'Xenova/whisper-base.en';
     static instance = null;
 
     static async getInstance(progress_callback = null) {
