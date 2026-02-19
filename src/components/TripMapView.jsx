@@ -1439,6 +1439,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                         key={isDarkTiles ? 'dark' : 'light'}
                         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                         url={isDarkTiles ? DARK_TILES : LIGHT_TILES}
+                        crossOrigin="anonymous"
                     />
 
                     <FitBounds positions={allPositions} selectedPosition={selectedPosition} />
