@@ -18,17 +18,17 @@ class PipelineSingleton {
 }
 
 self.onmessage = async (event) => {
-    const { audio, language } = event.data;
+    const { audio, language, id } = event.data;
 
     // audio arrives as a Float32Array (transferred, not cloned)
     if (!(audio instanceof Float32Array)) {
-        self.postMessage({ status: 'error', message: 'Invalid audio data received by worker.' });
+        self.postMessage({ status: 'error', message: 'Invalid audio data received by worker.', id });
         return;
     }
 
     try {
         const transcriber = await PipelineSingleton.getInstance((data) => {
-            self.postMessage({ status: 'progress', data });
+            self.postMessage({ status: 'progress', data, id });
         });
 
         const output = await transcriber(audio, {
@@ -38,9 +38,9 @@ self.onmessage = async (event) => {
             task: 'transcribe',
         });
 
-        self.postMessage({ status: 'complete', transcript: output.text });
+        self.postMessage({ status: 'complete', transcript: output.text, id });
     } catch (e) {
         console.error('Worker transcription error:', e);
-        self.postMessage({ status: 'error', message: e.message });
+        self.postMessage({ status: 'error', message: e.message, id });
     }
 };

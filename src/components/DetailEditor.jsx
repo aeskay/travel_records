@@ -18,8 +18,8 @@ const DetailEditor = ({ section, onUpdate }) => {
     const {
         startRecording,
         stopRecording,
+        transcribeAudio,
         status: voiceStatus,
-        transcript,
         audioBlob,
         error: voiceError
     } = useVoiceLogger();
@@ -32,12 +32,16 @@ const DetailEditor = ({ section, onUpdate }) => {
     // Track if we've already inserted the current transcript to avoid duplicates
     const lastInsertedTranscriptRef = useRef(null);
 
+    // Track details for async access
+    const detailsRef = useRef(details);
+
     // Real-time subscription
     useEffect(() => {
         if (!section?.id || !user) return;
 
         const unsubscribe = subscribeToDetails(section.id, user.username, (newDetails) => {
             setDetails(newDetails);
+            detailsRef.current = newDetails;
         });
 
         return () => unsubscribe();
@@ -58,33 +62,92 @@ const DetailEditor = ({ section, onUpdate }) => {
         }
     }, [details]);
 
-    // Handle Voice Logger State Changes
-    useEffect(() => {
-        if (voiceStatus === 'idle' && transcript && audioBlob) {
-            // Check if we already inserted this exact transcript
-            if (lastInsertedTranscriptRef.current === transcript) return;
-            lastInsertedTranscriptRef.current = transcript;
+    // Handle Manual Stop & Insert
+    const handleStopRecording = async () => {
+        const blob = await stopRecording();
+        if (!blob) return;
 
-            const reader = new FileReader();
-            reader.readAsDataURL(audioBlob);
-            reader.onloadend = () => {
-                const base64Audio = reader.result;
-                const text = transcript;
-                const transcriptHtml = text && text.trim()
-                    ? `<details open style="margin-top: 0.5rem; border: 1px solid hsl(var(--border)); padding: 0.5rem; border-radius: 4px; background: hsl(var(--card));"><summary style="cursor: pointer; font-weight: bold; font-size: 0.8rem; color: hsl(var(--muted-foreground)); user-select: none;">Transcript</summary><div style="margin-top: 0.5rem; white-space: pre-wrap; font-size: 0.9rem; color: hsl(var(--foreground)); line-height: 1.5;">${text}</div></details>`
-                    : '';
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = () => {
+            const base64Audio = reader.result;
+            const uniqueId = 'transcription-' + Date.now();
 
-                const audioHtml = `<br/><div class="audio-note-container" style="border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 0.5rem; background: hsl(var(--card)); margin: 0.5rem 0;"><audio controls src="${base64Audio}" style="width: 100%; margin-bottom: 0.5rem;"></audio>${transcriptHtml}</div><br/>`;
+            // Create initial HTML with unique ID and processing state
+            const audioHtml = `
+                <div class="audio-note-container" style="border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 0.5rem; background: hsl(var(--card)); margin: 0.5rem 0;">
+                    <audio controls src="${base64Audio}" style="width: 100%; margin-bottom: 0.5rem;"></audio>
+                    <div id="${uniqueId}" style="font-size: 0.9rem; color: hsl(var(--muted-foreground)); font-style: italic;">
+                        <span class="animate-pulse">Processing transcript...</span>
+                    </div>
+                </div><br/>
+             `;
 
-                insertHtmlAtCursor(audioHtml);
-            };
-        } else if (voiceStatus === 'error' && voiceError) {
-            alert("Transcription failed: " + voiceError);
-        } else if (voiceStatus === 'recording') {
-            lastInsertedTranscriptRef.current = null; // Reset on new recording
-        }
-    }, [voiceStatus, transcript, audioBlob, voiceError]);
+            insertHtmlAtCursor(audioHtml);
 
+            // Start transcription in background
+            transcribeAudio(blob)
+                .then(text => {
+                    const transcriptHtml = text && text.trim()
+                        ? `<details open style="margin-top: 0.5rem; border: 1px solid hsl(var(--border)); padding: 0.5rem; border-radius: 4px; background: hsl(var(--card));"><summary style="cursor: pointer; font-weight: bold; font-size: 0.8rem; color: hsl(var(--muted-foreground)); user-select: none;">Transcript</summary><div style="margin-top: 0.5rem; white-space: pre-wrap; font-size: 0.9rem; color: hsl(var(--foreground)); line-height: 1.5;">${text}</div></details>`
+                        : '<div style="font-style: italic; color: hsl(var(--muted-foreground));">No speech detected.</div>';
+
+                    // 1. Try to update editor DOM directly if it exists (Unsaved)
+                    const statusEl = document.getElementById(uniqueId);
+                    if (statusEl) {
+                        statusEl.outerHTML = transcriptHtml;
+                    }
+
+                    // 2. Check if it was already saved to DB (Saved)
+                    const savedDetail = detailsRef.current.find(d => d.content && d.content.includes(uniqueId));
+                    if (savedDetail) {
+                        // Parse existing content to replace the placeholder
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(savedDetail.content, 'text/html');
+                        const savedStatusEl = doc.getElementById(uniqueId);
+
+                        if (savedStatusEl) {
+                            // Create a temporary container to hold the new HTML
+                            const tempDiv = doc.createElement('div');
+                            tempDiv.innerHTML = transcriptHtml;
+                            // Replace the processing node with the new content
+                            savedStatusEl.replaceWith(...tempDiv.childNodes);
+
+                            const newContent = doc.body.innerHTML;
+                            updateDetail({
+                                ...savedDetail,
+                                content: newContent
+                            }, user.username).catch(console.error);
+                        }
+                    }
+                })
+                .catch(err => {
+                    console.error("Transcription failed", err);
+                    const errorHtml = `<span style="color: red;">Transcription failed.</span>`;
+
+                    // 1. Editor
+                    const statusEl = document.getElementById(uniqueId);
+                    if (statusEl) {
+                        statusEl.innerHTML = errorHtml;
+                    }
+
+                    // 2. Saved DB
+                    const savedDetail = detailsRef.current.find(d => d.content && d.content.includes(uniqueId));
+                    if (savedDetail) {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(savedDetail.content, 'text/html');
+                        const savedStatusEl = doc.getElementById(uniqueId);
+                        if (savedStatusEl) {
+                            savedStatusEl.innerHTML = errorHtml;
+                            updateDetail({
+                                ...savedDetail,
+                                content: doc.body.innerHTML
+                            }, user.username).catch(console.error);
+                        }
+                    }
+                });
+        };
+    };
 
     const insertHtmlAtCursor = (html) => {
         const sel = window.getSelection();
@@ -416,7 +479,7 @@ const DetailEditor = ({ section, onUpdate }) => {
                         <button
                             className={`btn p-2 ${voiceStatus === 'recording' ? 'text-red-500 animate-pulse' : 'btn-ghost hover:bg-[hsl(var(--accent))]'}`}
                             title={voiceStatus === 'recording' ? "Stop Recording" : "Record Audio"}
-                            onClick={voiceStatus === 'recording' ? stopRecording : startRecording}
+                            onClick={voiceStatus === 'recording' ? handleStopRecording : startRecording}
                         >
                             {voiceStatus === 'recording' ? <Square size={18} fill="currentColor" /> : <Mic size={18} />}
                         </button>
@@ -424,8 +487,8 @@ const DetailEditor = ({ section, onUpdate }) => {
                         {voiceStatus === 'transcribing' && <span className="text-xs text-blue-500 font-medium animate-pulse">Processing...</span>}
                     </div>
 
-                    <button onClick={handleSaveNew} className="btn btn-primary px-4 py-1.5 text-sm" disabled={voiceStatus === 'transcribing' || voiceStatus === 'recording'}>
-                        {voiceStatus === 'transcribing' ? 'Wait...' : <><Save size={16} /> Add Note</>}
+                    <button onClick={handleSaveNew} className="btn btn-primary px-4 py-1.5 text-sm" disabled={voiceStatus === 'recording'}>
+                        {isSaving ? 'Saving...' : <><Save size={16} /> Add Note</>}
                     </button>
                 </div>
             </div>

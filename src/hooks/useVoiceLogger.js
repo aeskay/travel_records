@@ -22,15 +22,15 @@ function resampleAudio(audioData, sourceRate, targetRate) {
 
 export function useVoiceLogger() {
     const mediaRecorderRef = useRef(null);
-    const audioChunksRef = useRef([]);
+    const pendingRequests = useRef(new Map());
     const workerRef = useRef(null);
     const mimeTypeRef = useRef('audio/webm');
+    const audioChunksRef = useRef([]);
 
-    const [status, setStatus] = useState('idle'); // idle | recording | transcribing | error
-    const [transcript, setTranscript] = useState('');
+    const [status, setStatus] = useState('idle');
     const [audioBlob, setAudioBlob] = useState(null);
-    const [modelProgress, setModelProgress] = useState(null); // download progress 0-100
     const [error, setError] = useState(null);
+    const [modelProgress, setModelProgress] = useState(null);
 
     // ─── Worker setup ────────────────────────────────────────────────────────────
     useEffect(() => {
@@ -40,27 +40,31 @@ export function useVoiceLogger() {
         );
 
         worker.onmessage = (e) => {
-            const { status: workerStatus, transcript: resultText, message, data } = e.data;
+            const { status: workerStatus, transcript: resultText, message, data, id } = e.data;
+
+            if (!id) return; // Ignore messages without ID (shouldn't happen with new worker)
+
+            const request = pendingRequests.current.get(id);
+            if (!request) return;
 
             if (workerStatus === 'progress') {
-                // data.progress is 0–100 during model download
-                if (typeof data?.progress === 'number') {
-                    setModelProgress(Math.round(data.progress));
-                }
+                setModelProgress(data);
             } else if (workerStatus === 'complete') {
-                setModelProgress(null);
-                setTranscript(resultText ?? '');
-                setStatus('idle');
+                request.resolve(resultText);
+                pendingRequests.current.delete(id);
             } else if (workerStatus === 'error') {
-                setModelProgress(null);
-                setError(message ?? 'Unknown transcription error');
-                setStatus('error');
+                request.reject(new Error(message));
+                pendingRequests.current.delete(id);
             }
         };
 
         worker.onerror = (e) => {
             console.error('Worker crashed:', e);
-            setError('Transcription worker crashed: ' + e.message);
+            // Reject all pending requests
+            for (const [id, req] of pendingRequests.current) {
+                req.reject(new Error('Worker crashed: ' + e.message));
+            }
+            pendingRequests.current.clear();
             setStatus('error');
         };
 
@@ -72,61 +76,48 @@ export function useVoiceLogger() {
         };
     }, []);
 
-    // ─── Audio processing ────────────────────────────────────────────────────────
-    // Defined with useCallback so stopRecording can safely depend on it.
-    const processAudio = useCallback(async (blob) => {
+    // ─── Transcription ───────────────────────────────────────────────────────────
+    const transcribeAudio = useCallback(async (blob) => {
         if (!workerRef.current) {
-            setError('Transcription worker not available.');
-            setStatus('error');
-            return;
+            throw new Error('Transcription worker not available.');
         }
 
-        try {
-            // Do NOT force sampleRate here — let the browser decode at its native rate,
-            // then we resample manually. Forcing 16 kHz in the AudioContext constructor
-            // causes silent failures on many Android devices.
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const arrayBuffer = await blob.arrayBuffer();
+        const id = 'req-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
 
-            let decoded;
+        return new Promise(async (resolve, reject) => {
             try {
-                decoded = await audioContext.decodeAudioData(arrayBuffer);
-            } catch (decodeErr) {
-                // Some Android versions can't decode webm in AudioContext.
-                // Surface a clear error rather than hanging.
-                throw new Error(
-                    `Audio decode failed (${decodeErr.message}). ` +
-                    'Try recording again or check browser support.'
+                // Store the resolver
+                pendingRequests.current.set(id, { resolve, reject });
+
+                // Process Audio
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const arrayBuffer = await blob.arrayBuffer();
+                let decoded;
+                try {
+                    decoded = await audioContext.decodeAudioData(arrayBuffer);
+                } finally {
+                    audioContext.close();
+                }
+
+                const rawAudio = decoded.getChannelData(0);
+                const nativeRate = decoded.sampleRate;
+                const audio16k = resampleAudio(rawAudio, nativeRate, 16000);
+
+                workerRef.current.postMessage(
+                    { audio: audio16k, language: 'english', id },
+                    [audio16k.buffer]
                 );
-            } finally {
-                // Always close the context to free hardware resources.
-                audioContext.close();
+            } catch (err) {
+                pendingRequests.current.delete(id);
+                reject(err);
             }
-
-            // Grab mono channel data at whatever rate the OS decoded it at.
-            const rawAudio = decoded.getChannelData(0);
-            const nativeRate = decoded.sampleRate;
-
-            // Resample to 16 kHz which Whisper expects.
-            const audio16k = resampleAudio(rawAudio, nativeRate, 16000);
-
-            // Transfer the underlying buffer instead of cloning it.
-            // This avoids an OOM copy on mobile for longer recordings.
-            workerRef.current.postMessage(
-                { audio: audio16k, language: 'english' },
-                [audio16k.buffer]
-            );
-        } catch (err) {
-            console.error('Audio processing error:', err);
-            setError(err.message);
-            setStatus('error');
-        }
-    }, []); // workerRef is a ref — stable, no dep needed
+        });
+    }, []);
 
     // ─── Start recording ─────────────────────────────────────────────────────────
     const startRecording = useCallback(async () => {
         setError(null);
-        setTranscript('');
+        // setTranscript(''); // Removed, hook no longer tracks single transcript
         setAudioBlob(null);
         setModelProgress(null);
 
@@ -135,8 +126,6 @@ export function useVoiceLogger() {
             stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     channelCount: 1,
-                    // Do NOT request sampleRate: 16000 here.
-                    // Android ignores it silently and can break the stream.
                     echoCancellation: true,
                     noiseSuppression: true,
                     autoGainControl: true,
@@ -149,7 +138,6 @@ export function useVoiceLogger() {
             return;
         }
 
-        // Pick the best supported MIME type.
         const preferredTypes = [
             'audio/webm;codecs=opus',
             'audio/webm',
@@ -172,7 +160,7 @@ export function useVoiceLogger() {
             setStatus('error');
         };
 
-        recorder.start(1000); // timeslice: flush a chunk every second
+        recorder.start(1000);
         mediaRecorderRef.current = recorder;
         setStatus('recording');
     }, []);
@@ -188,29 +176,24 @@ export function useVoiceLogger() {
             }
 
             recorder.onstop = async () => {
-                // Release microphone immediately.
                 recorder.stream.getTracks().forEach((t) => t.stop());
-
                 const blob = new Blob(audioChunksRef.current, { type: mimeTypeRef.current });
                 setAudioBlob(blob);
-                setStatus('transcribing');
-
-                await processAudio(blob);
-
+                setStatus('idle');
                 resolve(blob);
             };
 
             recorder.stop();
         });
-    }, [processAudio]); // processAudio is stable (useCallback with no deps)
+    }, []);
 
     return {
         startRecording,
         stopRecording,
-        status,        // 'idle' | 'recording' | 'transcribing' | 'error'
-        transcript,
+        transcribeAudio, // Direct method
+        status,
         audioBlob,
-        modelProgress, // number 0-100 during first-time model download, else null
         error,
+        modelProgress,
     };
 }
