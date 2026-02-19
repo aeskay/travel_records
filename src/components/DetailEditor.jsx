@@ -145,12 +145,12 @@ const DetailEditor = ({ section, onUpdate }) => {
             if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
                 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
                 recognitionRef.current = new SpeechRecognition();
-                recognitionRef.current.continuous = true;
+                recognitionRef.current.continuous = false; // Changed to false for better mobile support
                 recognitionRef.current.interimResults = true;
                 recognitionRef.current.lang = 'en-US';
 
                 transcriptRef.current = '';
-                addLog("SpeechRecognition initialized.");
+                addLog("SpeechRecognition initialized (continuous: false).");
 
                 recognitionRef.current.onstart = () => {
                     addLog("SpeechRecognition started.");
@@ -185,6 +185,16 @@ const DetailEditor = ({ section, onUpdate }) => {
 
                 recognitionRef.current.onend = () => {
                     addLog("SpeechRecognition ended.");
+                    // Manual restart loop if still recording
+                    if (isRecording && recognitionRef.current) {
+                        addLog("Restarting SpeechRecognition...");
+                        try {
+                            recognitionRef.current.start();
+                        } catch (e) {
+                            console.error("Failed to restart recognition", e);
+                            addLog("Failed to restart: " + e.message);
+                        }
+                    }
                 };
 
                 try {
@@ -209,8 +219,10 @@ const DetailEditor = ({ section, onUpdate }) => {
 
             mediaRecorderRef.current.onstop = () => {
                 addLog("MediaRecorder stopped.");
-                // EXPLICITLY stop recognition if it hasn't already
+
+                // Prevent restart loop
                 if (recognitionRef.current) {
+                    recognitionRef.current.onend = null; // Remove handler to prevent auto-restart
                     try {
                         recognitionRef.current.stop();
                         addLog("Called recognition.stop()");
