@@ -42,7 +42,7 @@ const ImportModal = ({ onClose, onImportComplete, projectId }) => {
         setIsAnalyzing(true);
         try {
             const parsed = await parseCSV(selectedFile);
-            const analysis = await analyzeImport(parsed, user?.username);
+            const analysis = await analyzeImport(parsed, user?.username, projectId);
             setReport(analysis);
         } catch (err) {
             console.error(err);

@@ -7,7 +7,7 @@ import { useUser } from '../context/UserContext';
 import SectionActionMenu from './SectionActionMenu';
 import { printSections } from '../utils/printUtils';
 
-const SectionDetail = ({ section, onUpdate, allTypes, onChangeStatus, onChangeType, onDeleteSection, onEdit, onViewOnMap, isAdmin }) => {
+const SectionDetail = ({ section, onUpdate, allTypes, onChangeStatus, onChangeType, onDeleteSection, onEdit, onViewOnMap, isAdmin, projectId }) => {
     const { user } = useUser();
     const [isUpdating, setIsUpdating] = useState(false);
     const [showPrivateNote, setShowPrivateNote] = useState(false);
@@ -15,29 +15,29 @@ const SectionDetail = ({ section, onUpdate, allTypes, onChangeStatus, onChangeTy
     const [loadingNote, setLoadingNote] = useState(false);
 
     useEffect(() => {
-        if (section?.id && user) {
+        if (section?.id && user && projectId) {
             setLoadingNote(true);
-            getPrivateNote(section.id, user.username).then(note => {
+            getPrivateNote(section.id, user.username, projectId).then(note => {
                 setPrivateNoteContent(note?.content || '');
                 setLoadingNote(false);
             });
         }
-    }, [section?.id, user]);
+    }, [section?.id, user, projectId]);
 
     const handleSavePrivateNote = async () => {
-        if (!user || !section) return;
+        if (!user || !section || !projectId) return;
         setLoadingNote(true);
-        await savePrivateNote(section.id, user.username, privateNoteContent);
+        await savePrivateNote(section.id, user.username, privateNoteContent, projectId);
         setLoadingNote(false);
         setShowPrivateNote(false);
     };
 
     const toggleStatus = async () => {
-        if (!user) return;
+        if (!user || !projectId) return;
         setIsUpdating(true);
         const newStatus = section.status === 'Evaluated' ? 'Pending' : 'Evaluated';
         const updatedSection = { ...section, status: newStatus };
-        await addSection(updatedSection, user.username);
+        await addSection(updatedSection, user.username, projectId);
         if (onUpdate) onUpdate();
         setIsUpdating(false);
     };

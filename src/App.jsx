@@ -55,12 +55,12 @@ function AppContent() {
   // Sync selectedSection with sections state to reflect updates (like status changes)
   useEffect(() => {
     if (selectedSection) {
-      const updated = sections.find(s => s.id === selectedSection.id);
+      const updated = sections.find(s => s.docId === selectedSection.docId);
       if (updated && updated !== selectedSection) {
         setSelectedSection(updated);
       }
     }
-  }, [sections]);
+  }, [sections, selectedSection]);
 
   const handleImportComplete = () => {
     loadSections();
@@ -128,8 +128,8 @@ function AppContent() {
       alert("Only administrators can delete sections.");
       return;
     }
-    await deleteSection(section.id, user.username);
-    if (selectedSection?.id === section.id) setSelectedSection(null);
+    await deleteSection(section.docId, user.username);
+    if (selectedSection?.docId === section.docId) setSelectedSection(null);
     loadSections();
   };
 
@@ -181,7 +181,7 @@ function AppContent() {
       <Sidebar
         sections={filteredSections}
         onSelectSection={(s) => { setSelectedSection(s); setCurrentView('dashboard'); if (window.innerWidth < 768) setSidebarCollapsed(true); }}
-        selectedSectionId={selectedSection?.id}
+        selectedSectionId={selectedSection?.docId}
         onOpenImport={() => isAdmin && setIsImportModalOpen(true)}
         onOpenManual={() => isAdmin && setIsManualModalOpen(true)}
         filterType={filterType}
@@ -278,6 +278,7 @@ function AppContent() {
                 onEdit={(section) => setEditingSection(section)}
                 onViewOnMap={handleViewOnMap}
                 isAdmin={isAdmin}
+                projectId={currentProject.id}
               />
             ) : (
               <DashboardView

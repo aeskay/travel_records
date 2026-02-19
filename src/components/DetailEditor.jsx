@@ -34,14 +34,14 @@ const DetailEditor = ({ section, onUpdate }) => {
 
     // Real-time subscription
     useEffect(() => {
-        if (!section?.id || !user) return;
+        if (!section?.docId || !user) return;
 
-        const unsubscribe = subscribeToDetails(section.id, user.username, (newDetails) => {
+        const unsubscribe = subscribeToDetails(section.docId, user.username, (newDetails) => {
             setDetails(newDetails);
         });
 
         return () => unsubscribe();
-    }, [section?.id, user]);
+    }, [section?.docId, user]);
 
     useEffect(() => {
         if (editorRef.current) {
@@ -49,7 +49,7 @@ const DetailEditor = ({ section, onUpdate }) => {
         }
         setEditingId(null);
         setSelectedImg(null);
-    }, [section?.id]);
+    }, [section?.docId]);
 
     // Auto-scroll to bottom of timeline when details change
     useEffect(() => {
@@ -237,7 +237,7 @@ const DetailEditor = ({ section, onUpdate }) => {
             }
 
             const newDetail = {
-                sectionId: section.id,
+                sectionId: section.docId,
                 content: header + content,
                 timestamp: timestamp.toISOString(),
             };

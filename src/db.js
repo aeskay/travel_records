@@ -22,7 +22,7 @@ const privateNotesRef = collection(db, 'private_notes');
 const projectsRef = collection(db, 'projects');
 
 // Helper to snapshot to array
-const snapToData = (snap) => snap.docs.map(d => ({ ...d.data(), id: d.id }));
+const snapToData = (snap) => snap.docs.map(d => ({ id: d.id, ...d.data(), docId: d.id }));
 
 export const getProjects = async (username) => {
     // Projects created by or accessible to user
@@ -109,24 +109,14 @@ export const deleteProject = async (projectId, username) => {
 };
 
 export const getSections = async (username, projectId) => {
-    // If no projectId is passed, we might resolve to empty or all, 
-    // but for this new system we really want a projectId. 
-    // However, for debugging migration, we might want to be robust.
-
-    // To avoid "Missing Index" errors on username+projectId, let's query by username ONLY first.
-    // Then filter by projectId in JS. This is safe for < 1000 items.
-
     try {
-        console.log(`[getSections] Fetching for projectId: ${projectId} (fallback: checks username)`);
+        console.log(`[getSections] Fetching for projectId: ${projectId}`);
         const sectionsRef = collection(db, "sections");
         let q;
 
         if (projectId) {
-            // Priority: Query by Project ID directly.
-            // This avoids username index issues if the username on sections is missing/different.
             q = query(sectionsRef, where("projectId", "==", projectId));
         } else {
-            // Fallback: Query by username (only for non-project views if any)
             q = query(sectionsRef, where("username", "==", username));
         }
 
@@ -134,7 +124,7 @@ export const getSections = async (username, projectId) => {
         const sections = snapToData(querySnapshot);
         console.log(`[getSections] Found: ${sections.length} sections.`);
 
-        // Sort manually to avoid index requirements for now
+        // Sort by the display ID
         return sections.sort((a, b) => (a.id || "").localeCompare(b.id || ""));
 
     } catch (error) {
@@ -144,33 +134,34 @@ export const getSections = async (username, projectId) => {
 };
 
 export const addSection = async (section, username, projectId) => {
-    // We use the Section ID as the document ID for easy lookup/deduplication
+    if (!projectId && !section.projectId) throw new Error("Project ID is required for addSection");
+    const pid = projectId || section.projectId;
+    // Composite ID to prevent cross-project collisions
+    const docId = `${pid}_${section.id}`;
+
     const data = {
         ...section,
+        projectId: pid,
         lastModifiedBy: username || 'anon',
         lastModified: new Date().toISOString()
     };
-    if (projectId) {
-        data.projectId = projectId;
-    }
-    await setDoc(doc(sectionsRef, section.id), data, { merge: true });
+    await setDoc(doc(sectionsRef, docId), data, { merge: true });
 };
 
 export const addSections = async (sections, username, { merge = false, projectId = null } = {}) => {
-    // Firestore allows batches of up to 500 ops.
+    if (!projectId) throw new Error("Project ID is required for addSections");
     const batch = writeBatch(db);
     let count = 0;
 
     for (const section of sections) {
-        const docRef = doc(sectionsRef, section.id);
+        const docId = `${projectId}_${section.id}`;
+        const docRef = doc(sectionsRef, docId);
         const data = {
             ...section,
+            projectId: projectId,
             lastModifiedBy: username || 'anon',
             lastModified: new Date().toISOString()
         };
-        if (projectId) {
-            data.projectId = projectId;
-        }
 
         if (merge) {
             batch.set(docRef, data, { merge: true });
@@ -186,28 +177,24 @@ export const addSections = async (sections, username, { merge = false, projectId
     if (count > 0) await batch.commit();
 };
 
-export const getDetails = async (sectionId, username) => {
+export const getDetails = async (sectionDocId, username) => {
     const q = query(
         detailsRef,
-        where('sectionId', '==', sectionId),
-        // orderBy('timestamp', 'asc') // Requires an index in Firestore usually
+        where('sectionId', '==', sectionDocId),
     );
     const snap = await getDocs(q);
-    // Sort manually to avoid index creation delay for the user right now
     const data = snapToData(snap);
     return data.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 };
 
-export const subscribeToDetails = (sectionId, username, callback) => {
+export const subscribeToDetails = (sectionDocId, username, callback) => {
     const q = query(
         detailsRef,
-        where('sectionId', '==', sectionId)
+        where('sectionId', '==', sectionDocId)
     );
 
-    // onSnapshot returns an unsubscribe function
     return onSnapshot(q, (snapshot) => {
         const data = snapToData(snapshot);
-        // Sort manually to match getDetails behavior
         const sortedData = data.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
         callback(sortedData);
     }, (error) => {
@@ -217,6 +204,7 @@ export const subscribeToDetails = (sectionId, username, callback) => {
 };
 
 export const addDetail = async (detail, username) => {
+    // detail.sectionId should be the section's docId (composite)
     await addDoc(detailsRef, detail);
 };
 
@@ -229,8 +217,8 @@ export const deleteDetail = async (id, username) => {
     await deleteDoc(doc(detailsRef, id));
 };
 
-export const deleteSection = async (sectionId, username) => {
-    await deleteDoc(doc(sectionsRef, sectionId));
+export const deleteSection = async (sectionDocId, username) => {
+    await deleteDoc(doc(sectionsRef, sectionDocId));
 };
 
 export const clearSections = async (username) => {
@@ -248,9 +236,10 @@ export const getAllData = async (username) => {
 
 
 
-export const getPrivateNote = async (sectionId, username) => {
-    // Unique ID for the private note based on section + user
-    const noteId = `${sectionId}_${username}`;
+export const getPrivateNote = async (sectionId, username, projectId) => {
+    if (!projectId) return null;
+    // Composite ID including projectId for isolation
+    const noteId = `${projectId}_${sectionId}_${username}`;
     const docRef = doc(privateNotesRef, noteId);
     try {
         const d = await getDoc(docRef);
@@ -264,10 +253,12 @@ export const getPrivateNote = async (sectionId, username) => {
     }
 };
 
-export const savePrivateNote = async (sectionId, username, content) => {
-    const noteId = `${sectionId}_${username}`;
+export const savePrivateNote = async (sectionId, username, content, projectId) => {
+    if (!projectId) return;
+    const noteId = `${projectId}_${sectionId}_${username}`;
     await setDoc(doc(privateNotesRef, noteId), {
         sectionId,
+        projectId,
         username,
         content,
         lastModified: new Date().toISOString()
@@ -309,123 +300,212 @@ export const getSharedDaysPlan = async (projectId) => {
     return [];
 };
 
-export const migrateLegacyData = async (username) => {
-    // 1. Check if any projects exist
-    const projectsSnap = await getDocs(projectsRef);
-    if (!projectsSnap.empty) {
-        return null; // Already migrated or started fresh
-    }
+export const migrateLegacyData = async (targetProjectId, username) => {
+    console.log(`[Migration] Starting migration to project: ${targetProjectId}`);
+    if (!targetProjectId) throw new Error("Target Project ID is required for migration");
 
-    console.log("Migrating legacy data to default project...");
-
-    // 2. Create Default Project
-    const defaultProject = await createProject('2026 Round Trip (Legacy)', username);
-    const projectId = defaultProject.id;
-
-    // 3. Fetch ALL sections
-    // Note: This fetches everything. If huge, might need pagination, but likely okay for now.
-    const sectionsSnap = await getDocs(sectionsRef);
-    const allSections = snapToData(sectionsSnap);
-
-    // 4. Update all with projectId
-    // Use batches
     const batch = writeBatch(db);
-    let count = 0;
+    let operationCount = 0;
 
-    for (const s of allSections) {
-        // Only update if no projectId
-        if (!s.projectId) {
-            const ref = doc(sectionsRef, s.id);
-            batch.update(ref, { projectId: projectId });
-            count++;
-            if (count >= 400) {
-                await batch.commit();
-                count = 0;
-            }
+    // 1. Migrate Sections - find ones missing projectId
+    const allSectionsSnap = await getDocs(sectionsRef);
+    const sectionsToMigrate = allSectionsSnap.docs.filter(d => !d.data().projectId);
+    console.log(`[Migration] Found ${sectionsToMigrate.length} potential legacy sections.`);
+
+    for (const d of sectionsToMigrate) {
+        const data = d.data();
+        const sectionId = data.id || d.id;
+        const newDocId = `${targetProjectId}_${sectionId}`;
+
+        // Skip if target doc already exists to avoid overwrite? 
+        // Or merge? Let's merge to be safe, assuming legacy is source of truth if not present.
+
+        // Create new scoped document
+        batch.set(doc(sectionsRef, newDocId), {
+            ...data,
+            projectId: targetProjectId,
+            lastModifiedBy: username || 'migration',
+            lastModified: new Date().toISOString()
+        }, { merge: true });
+
+        // Update details referencing this section (by OLD id)
+        const detailsQuery = query(detailsRef, where('sectionId', '==', d.id));
+        const detailsSnap = await getDocs(detailsQuery);
+        for (const detDoc of detailsSnap.docs) {
+            batch.update(doc(detailsRef, detDoc.id), {
+                sectionId: newDocId,
+                projectId: targetProjectId
+            });
+            operationCount++;
+        }
+
+        // Delete old document
+        batch.delete(doc(sectionsRef, d.id));
+        operationCount += 2;
+
+        if (operationCount >= 400) {
+            await batch.commit();
+            operationCount = 0;
         }
     }
-    if (count > 0) await batch.commit();
 
-    console.log(`Migration complete. ${allSections.length} sections moved to project ${projectId}`);
-    return defaultProject;
+    // 2. Migrate Private Notes - find ones missing projectId
+    const allNotesSnap = await getDocs(privateNotesRef);
+    const notesToMigrate = allNotesSnap.docs.filter(d => !d.data().projectId);
+    console.log(`[Migration] Found ${notesToMigrate.length} legacy private notes.`);
+
+    for (const d of notesToMigrate) {
+        const data = d.data();
+        const sectionId = data.sectionId;
+        const noteUsername = data.username || username;
+
+        if (!sectionId || !noteUsername) continue;
+
+        const newNoteId = `${targetProjectId}_${sectionId}_${noteUsername}`;
+
+        batch.set(doc(privateNotesRef, newNoteId), {
+            ...data,
+            projectId: targetProjectId,
+            lastModified: new Date().toISOString()
+        }, { merge: true });
+
+        // Delete old document
+        if (d.id !== newNoteId) {
+            batch.delete(doc(privateNotesRef, d.id));
+        }
+
+        operationCount += 2;
+        if (operationCount >= 400) {
+            await batch.commit();
+            operationCount = 0;
+        }
+    }
+
+    if (operationCount > 0) await batch.commit();
+    console.log("[Migration] Completed successfully.");
+    return { success: true, migratedSections: sectionsToMigrate.length, migratedNotes: notesToMigrate.length };
 };
 
 export const consolidateLegacyProjects = async (username) => {
-    console.log("Starting consolidation...");
+    // Deprecated in favor of targeted migration
+    return { message: "Please use the 'Migrate Legacy Data' button on your target trip." };
+};
 
-    // 1. Get all projects
-    const projectsSnap = await getDocs(projectsRef);
-    const projects = snapToData(projectsSnap);
+// --- Data Management (Scoped) ---
 
-    // Find all legacy projects
-    const legacyProjects = projects.filter(p => p.name.includes("Legacy"));
+export const getProjectData = async (projectId) => {
+    if (!projectId) throw new Error("Project ID required");
 
-    if (legacyProjects.length < 2) {
-        return { message: "No duplicates to consolidate.", deletedProjects: 0, totalSections: 0 };
-    }
+    // Fetch only sections for this project
+    const sectionsQuery = query(sectionsRef, where("projectId", "==", projectId));
+    const sectionsSnap = await getDocs(sectionsQuery);
+    const sections = snapToData(sectionsSnap);
 
-    // Sort by creation time (keep oldest or newest? Let's keep the one with most recent activity or just first)
-    // Actually, sorting by createdAt allows us to keep the 'original'.
-    legacyProjects.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    // Fetch details for these sections
+    const detailsQuery = query(detailsRef, where("projectId", "==", projectId));
+    const detailsSnap = await getDocs(detailsQuery);
+    const details = snapToData(detailsSnap);
 
-    const master = legacyProjects[0];
-    const duplicates = legacyProjects.slice(1);
-
-    console.log(`Master Project: ${master.id} (${master.name})`);
-
-    // 2. Get ALL sections
-    // Get everything to be safe
-    const sectionsSnap = await getDocs(sectionsRef);
-    const allSections = snapToData(sectionsSnap);
-
-    const batch = writeBatch(db);
-    let updatedCount = 0;
-    let opsCount = 0;
-
-    // 3. Move sections from duplicates to master
-    for (const s of allSections) {
-        // If section belongs to a duplicate project, move it to master
-        if (duplicates.find(d => d.id === s.projectId)) {
-            const ref = doc(sectionsRef, s.id);
-            batch.update(ref, { projectId: master.id });
-            updatedCount++;
-            opsCount++;
-        }
-
-        // Also fix orphans if any? Maybe not for now, stay focused on duplicates.
-        // But if they are orphans likely they belong to legacy.
-        if (!s.projectId) {
-            const ref = doc(sectionsRef, s.id);
-            batch.update(ref, { projectId: master.id });
-            updatedCount++;
-            opsCount++;
-        }
-
-        if (opsCount >= 400) {
-            await batch.commit();
-            opsCount = 0;
-        }
-    }
-
-    if (opsCount > 0) {
-        await batch.commit();
-        opsCount = 0;
-    }
-
-    // 4. Delete duplicate projects
-    // Create new batch for deletions
-    const deleteBatch = writeBatch(db);
-    for (const dup of duplicates) {
-        deleteBatch.delete(doc(projectsRef, dup.id));
-    }
-    await deleteBatch.commit();
+    // Fetch private notes
+    const notesQuery = query(privateNotesRef, where("projectId", "==", projectId));
+    const notesSnap = await getDocs(notesQuery);
+    const notes = snapToData(notesSnap);
 
     return {
-        totalSections: allSections.length,
-        movedSections: updatedCount,
-        deletedProjects: duplicates.length,
-        masterProject: master
+        metadata: {
+            projectId,
+            exportedAt: new Date().toISOString(),
+            version: "2.0" // Scoped version
+        },
+        sections,
+        details,
+        notes
     };
+};
+
+export const restoreProjectData = async (data, targetProjectId, username) => {
+    if (!targetProjectId) throw new Error("Target Project ID required");
+    if (!data || !data.sections) throw new Error("Invalid backup file format");
+
+    console.log(`[Restore] Restoring to project ${targetProjectId}...`);
+    const batch = writeBatch(db);
+    let opCount = 0;
+
+    const sections = data.sections || [];
+    const details = data.details || [];
+    const notes = data.notes || [];
+
+    // 2. Import Sections
+    for (const section of sections) {
+        const realId = section.id;
+        const newDocId = `${targetProjectId}_${realId}`;
+
+        batch.set(doc(sectionsRef, newDocId), {
+            ...section,
+            projectId: targetProjectId,
+            lastModifiedBy: username || 'restore',
+            lastModified: new Date().toISOString()
+        });
+        opCount++;
+        if (opCount >= 400) { await batch.commit(); opCount = 0; }
+    }
+
+    // 3. Import Details
+    for (const detail of details) {
+        let shortSectionId = detail.sectionId;
+        // Try to recover short ID from scoped ID if needed
+        if (shortSectionId.includes('_')) {
+            const parent = sections.find(s => s.docId === detail.sectionId || s.id === detail.sectionId);
+            if (parent) shortSectionId = parent.id;
+            else shortSectionId = shortSectionId.split('_').pop(); // Fallback
+        }
+
+        const newSectionDocId = `${targetProjectId}_${shortSectionId}`;
+        const newDetailId = detail.docId ? `${targetProjectId}_${detail.docId}` : doc(detailsRef).id;
+        const newRef = doc(collection(db, 'details'));
+
+        batch.set(newRef, {
+            ...detail,
+            sectionId: newSectionDocId,
+            projectId: targetProjectId
+        });
+        opCount++;
+        if (opCount >= 400) { await batch.commit(); opCount = 0; }
+    }
+
+    // 4. Import Notes
+    for (const note of notes) {
+        const shortSectionId = note.sectionId;
+        if (!shortSectionId) continue;
+
+        const newNoteId = `${targetProjectId}_${shortSectionId}_${note.username}`;
+
+        batch.set(doc(privateNotesRef, newNoteId), {
+            ...note,
+            projectId: targetProjectId,
+            lastModified: new Date().toISOString()
+        });
+        opCount++;
+        if (opCount >= 400) { await batch.commit(); opCount = 0; }
+    }
+
+    if (opCount > 0) await batch.commit();
+    return { success: true, count: sections.length };
+};
+
+export const duplicateProject = async (sourceProjectId, newName, username) => {
+    // 1. Create new project
+    const newProject = await createProject(newName, username);
+    const targetId = newProject.id;
+    console.log(`[Duplicate] Created ${targetId}, copying from ${sourceProjectId}`);
+
+    // 2. Fetch source data
+    const sourceData = await getProjectData(sourceProjectId);
+
+    // 3. Restore to new project
+    await restoreProjectData(sourceData, targetId, username);
+
+    return newProject;
 };
 
 

@@ -166,8 +166,8 @@ const Sidebar = ({
                                     <div className="mt-1 flex flex-col gap-1 pl-2">
                                         {groupedSections[type].map(section => (
                                             <div
-                                                key={section.id}
-                                                className={`section-item ${selectedSectionId === section.id ? 'active' : ''}`}
+                                                key={section.docId}
+                                                className={`section-item ${selectedSectionId === section.docId ? 'active' : ''}`}
                                                 onClick={() => onSelectSection(section)}
                                                 style={{ flexDirection: 'row', alignItems: 'center' }}
                                             >

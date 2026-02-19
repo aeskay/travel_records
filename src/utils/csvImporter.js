@@ -102,10 +102,10 @@ export const parseCSV = (file) => {
     });
 };
 
-export const analyzeImport = async (parsedData, username) => {
+export const analyzeImport = async (parsedData, username, projectId) => {
     const sectionsToAnalyze = Array.isArray(parsedData) ? parsedData : (parsedData.sections || []);
 
-    const existingSections = await getSections(username);
+    const existingSections = await getSections(username, projectId);
     const report = {
         newOrUpdates: [],      // Completely new sections
         mergeable: [],         // Existing sections with new field data to merge

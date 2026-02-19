@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { getProjects, createProject, deleteProject, updateProject, consolidateLegacyProjects } from '../db';
+import { getProjects, createProject, deleteProject, updateProject, consolidateLegacyProjects, duplicateProject } from '../db';
 import { useUser } from '../context/UserContext';
-import { Plus, FolderOpen, Loader, Trash2, Edit2, Map, Calendar, X, Check, Wrench, User, Mail, Moon, Sun, Sunset, LogOut } from 'lucide-react';
+import { Plus, FolderOpen, Loader, Trash2, Edit2, Map, Calendar, X, Check, Wrench, User, Mail, Moon, Sun, Sunset, LogOut, Copy } from 'lucide-react';
 import './ProjectSelection.css';
 
 const ProjectSelection = ({ user, onSelectProject }) => {
@@ -86,6 +86,26 @@ const ProjectSelection = ({ user, onSelectProject }) => {
             setLoading(false);
         }
     };
+
+    const handleDuplicate = async (e, projectId, projectName) => {
+        e.stopPropagation();
+        const newName = prompt(`Enter name for copy of "${projectName}":`, `${projectName} (Copy)`);
+        if (!newName) return;
+
+        setLoading(true);
+        try {
+            await duplicateProject(projectId, newName, user.username);
+            alert("Trip duplicated successfully!");
+            await fetchProjects();
+        } catch (err) {
+            console.error("Error duplicating trip:", err);
+            alert(`Duplicate failed: ${err.message}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+
 
     const startEditing = (e, project) => {
         e.stopPropagation();
@@ -378,8 +398,11 @@ const ProjectSelection = ({ user, onSelectProject }) => {
                                                     <button onClick={(e) => startEditing(e, project)} className="action-btn">
                                                         <Edit2 size={14} />
                                                     </button>
-                                                    <button onClick={(e) => handleDelete(e, project.id)} className="action-btn delete">
+                                                    <button onClick={(e) => handleDelete(e, project.id)} className="action-btn delete" title="Delete Trip">
                                                         <Trash2 size={14} />
+                                                    </button>
+                                                    <button onClick={(e) => handleDuplicate(e, project.id, project.name)} className="action-btn" title="Duplicate Trip">
+                                                        <Copy size={14} />
                                                     </button>
                                                 </>
                                             )}

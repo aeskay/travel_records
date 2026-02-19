@@ -1069,7 +1069,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
 
     // Get icon for section
     const getIcon = (section) => {
-        const isSelected = selectedSection?.id === section.id;
+        const isSelected = selectedSection?.docId === section.docId;
         const seqNum = section.test_sequence && String(section.test_sequence).trim();
         const seqInt = seqNum ? parseInt(seqNum, 10) : null;
 
@@ -1393,7 +1393,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
 
                                                     return (
                                                         <button
-                                                            key={s.id}
+                                                            key={s.docId}
                                                             className={`sequence-cell ${isAssignedToThis ? 'selected' : ''} ${isAssignedToOther ? 'greyed' : ''}`}
                                                             onClick={() => toggleSequenceInDay(day.day, seq)}
                                                             disabled={(isAssignedToOther) || (!isAdmin)} // Disable if assigned elsewhere OR not admin
@@ -1502,12 +1502,12 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
 
                     {/* Section Markers */}
                     {mappableSections.map(section => {
-                        const isSelected = selectedSection?.id === section.id;
+                        const isSelected = selectedSection?.docId === section.docId;
                         const icon = getIcon(section);
 
                         return (
                             <Marker
-                                key={section.id}
+                                key={section.docId}
                                 position={section.latLng}
                                 icon={icon}
                                 zIndexOffset={isSelected ? 1000 : 0}

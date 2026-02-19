@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useUser } from '../context/UserContext';
-import { getAllData, restoreData, manageProjectUsers } from '../db';
+import { getAllData, restoreData, manageProjectUsers, getProjectData, restoreProjectData } from '../db';
 import { Moon, Sun, Sunset, Download, Upload, LogOut, User, Edit2, Save, Trash2, X, Plus } from 'lucide-react';
 
 const SettingsView = ({ onClose, isAdmin, currentProject, onProjectUpdate }) => {
@@ -29,19 +29,23 @@ const SettingsView = ({ onClose, isAdmin, currentProject, onProjectUpdate }) => 
 
     const handleBackup = async () => {
         try {
-            const data = await getAllData(user.username);
+            if (!currentProject?.id) {
+                alert("No active trip to backup.");
+                return;
+            }
+            const data = await getProjectData(currentProject.id);
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `backup-${user.username}-${new Date().toISOString().slice(0, 10)}.json`;
+            a.download = `backup-${currentProject.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}-${new Date().toISOString().slice(0, 10)}.json`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
         } catch (err) {
             console.error("Backup failed", err);
-            alert("Backup failed");
+            alert("Backup failed: " + err.message);
         }
     };
 
@@ -49,17 +53,22 @@ const SettingsView = ({ onClose, isAdmin, currentProject, onProjectUpdate }) => 
         const file = e.target.files[0];
         if (!file) return;
 
-        if (confirm("WARNING: This will overwrite all current data for this user. Are you sure?")) {
+        if (!currentProject?.id) {
+            alert("No active trip to restore to.");
+            return;
+        }
+
+        if (confirm(`WARNING: This will overwrite data for the trip "${currentProject.name}". Are you sure?`)) {
             const reader = new FileReader();
             reader.onload = async (event) => {
                 try {
                     const data = JSON.parse(event.target.result);
-                    await restoreData(data, user.username);
-                    alert("Data restored successfully. Reloading...");
+                    const result = await restoreProjectData(data, currentProject.id, user.username);
+                    alert(`Restored ${result.count} sections successfully. Reloading...`);
                     window.location.reload();
                 } catch (err) {
                     console.error("Restore failed", err);
-                    alert("Invalid backup file.");
+                    alert("Restore failed: " + err.message);
                 }
             };
             reader.readAsText(file);
