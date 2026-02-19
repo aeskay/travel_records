@@ -4,7 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
   optimizeDeps: {
-    exclude: ['lucide-react', '@xenova/transformers'],
+    exclude: ['lucide-react'],
   },
 
   plugins: [

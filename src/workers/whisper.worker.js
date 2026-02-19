@@ -1,6 +1,6 @@
+import { pipeline, env } from '@xenova/transformers';
 
-import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
-
+// Skip local checks
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 
