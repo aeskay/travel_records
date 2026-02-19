@@ -9,6 +9,7 @@ const DetailEditor = ({ section, onUpdate }) => {
     const { user } = useUser();
     const [details, setDetails] = useState([]);
     const [isRecording, setIsRecording] = useState(false);
+    const isRecordingRef = useRef(false);
     const [isSaving, setIsSaving] = useState(false);
     const [editingId, setEditingId] = useState(null); // ID of detail being edited
     const [selectedImg, setSelectedImg] = useState(null); // For main editor
@@ -186,7 +187,8 @@ const DetailEditor = ({ section, onUpdate }) => {
                 recognitionRef.current.onend = () => {
                     addLog("SpeechRecognition ended.");
                     // Manual restart loop if still recording
-                    if (isRecording && recognitionRef.current) {
+                    // Use ref to check current state
+                    if (isRecordingRef.current && recognitionRef.current) {
                         addLog("Restarting SpeechRecognition...");
                         try {
                             recognitionRef.current.start();
@@ -255,7 +257,9 @@ const DetailEditor = ({ section, onUpdate }) => {
             };
 
             mediaRecorderRef.current.start();
+            mediaRecorderRef.current.start();
             setIsRecording(true);
+            isRecordingRef.current = true;
         } catch (err) {
             console.error("Error accessing microphone:", err);
             addLog("Error accessing microphone: " + err.message);
@@ -267,8 +271,10 @@ const DetailEditor = ({ section, onUpdate }) => {
         addLog("Stopping recording...");
         if (mediaRecorderRef.current && isRecording) {
             // Signal intent to stop everything
+            // Signal intent to stop everything
             mediaRecorderRef.current.stop();
             setIsRecording(false);
+            isRecordingRef.current = false;
 
             // Also stop recognition immediately to prevent hanging
             if (recognitionRef.current) {
