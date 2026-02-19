@@ -131,9 +131,47 @@ const DetailEditor = ({ section, onUpdate }) => {
 
     const [debugLogs, setDebugLogs] = useState([]);
 
+    const [transcribing, setTranscribing] = useState(false);
+
     const addLog = (msg) => {
         console.log(msg);
         setDebugLogs(prev => [new Date().toLocaleTimeString() + ': ' + msg, ...prev].slice(0, 20));
+    };
+
+    const transcribeAudio = async (audioBlob) => {
+        setTranscribing(true);
+        addLog("Sending audio to Whisper for transcription...");
+
+        try {
+            const response = await fetch('/.netlify/functions/transcribe', {
+                method: 'POST',
+                body: audioBlob,
+                headers: {
+                    'Content-Type': 'audio/webm',
+                },
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `Server error: ${response.status}`);
+            }
+
+            const data = await response.json();
+            if (data.text) {
+                addLog("Transcription received: " + data.text.substring(0, 20) + "...");
+                return data.text;
+            } else {
+                addLog("No transcription returned.");
+                return "";
+            }
+        } catch (error) {
+            console.error("Transcription failed:", error);
+            addLog("Transcription failed: " + error.message);
+            alert("Transcription failed: " + error.message);
+            return "";
+        } finally {
+            setTranscribing(false);
+        }
     };
 
     const startRecording = async () => {
@@ -142,73 +180,7 @@ const DetailEditor = ({ section, onUpdate }) => {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             addLog("Microphone access granted.");
 
-            // Initialize Speech Recognition if available
-            if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
-                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                recognitionRef.current = new SpeechRecognition();
-                recognitionRef.current.continuous = false; // Changed to false for better mobile support
-                recognitionRef.current.interimResults = true;
-                recognitionRef.current.lang = 'en-US';
-
-                transcriptRef.current = '';
-                addLog("SpeechRecognition initialized (continuous: false).");
-
-                recognitionRef.current.onstart = () => {
-                    addLog("SpeechRecognition started.");
-                };
-
-                recognitionRef.current.onresult = (event) => {
-                    let finalTranscript = '';
-                    for (let i = event.resultIndex; i < event.results.length; ++i) {
-                        if (event.results[i].isFinal) {
-                            finalTranscript += event.results[i][0].transcript + ' ';
-                        }
-                    }
-                    if (finalTranscript) {
-                        transcriptRef.current += finalTranscript;
-                        addLog("Final result received: " + finalTranscript.substring(0, 20) + "...");
-                    } else {
-                        // Interim
-                        addLog("Interim result received.");
-                    }
-                };
-
-                recognitionRef.current.onerror = (event) => {
-                    console.error("Speech recognition error", event.error);
-                    addLog("SpeechRecognition error: " + event.error);
-                    if (event.error === 'not-allowed') {
-                        alert("Microphone access denied for speech recognition.");
-                    } else if (event.error === 'network') {
-                        // Network error is common in production if offline or unstable
-                        console.warn("Speech recognition network error - transcript might be incomplete.");
-                    }
-                };
-
-                recognitionRef.current.onend = () => {
-                    addLog("SpeechRecognition ended.");
-                    // Manual restart loop if still recording
-                    // Use ref to check current state
-                    if (isRecordingRef.current && recognitionRef.current) {
-                        addLog("Restarting SpeechRecognition...");
-                        try {
-                            recognitionRef.current.start();
-                        } catch (e) {
-                            console.error("Failed to restart recognition", e);
-                            addLog("Failed to restart: " + e.message);
-                        }
-                    }
-                };
-
-                try {
-                    recognitionRef.current.start();
-                    addLog("Called recognition.start()");
-                } catch (e) {
-                    console.error("Failed to start recognition", e);
-                    addLog("Failed to start recognition: " + e.message);
-                }
-            } else {
-                addLog("SpeechRecognition API NOT available in this browser.");
-            }
+            addLog("Microphone access granted.");
 
             // Use low bitrate for smaller recordings that fit in Firestore
             const options = { audioBitsPerSecond: 32000 };
@@ -222,39 +194,33 @@ const DetailEditor = ({ section, onUpdate }) => {
             mediaRecorderRef.current.onstop = () => {
                 addLog("MediaRecorder stopped.");
 
-                // Prevent restart loop
-                if (recognitionRef.current) {
-                    recognitionRef.current.onend = null; // Remove handler to prevent auto-restart
-                    try {
-                        recognitionRef.current.stop();
-                        addLog("Called recognition.stop()");
-                    } catch (e) {
-                        // Ignore
-                    }
-                }
+                // Process immediately
+                addLog("Processing recording...");
+                const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
 
-                // Wait a moment for speech recognition to finalize its last result
-                // Increased wait time for production latency
-                setTimeout(() => {
-                    addLog("Processing recording...");
-                    const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+                // Start transcription
+                transcribeAudio(blob).then(transcript => {
                     const reader = new FileReader();
                     reader.onloadend = () => {
-                        const transcriptHtml = transcriptRef.current.trim()
-                            ? `<details open style="margin-top: 0.5rem; border: 1px solid hsl(var(--border)); padding: 0.5rem; border-radius: 4px; background: hsl(var(--card));"><summary style="cursor: pointer; font-weight: bold; font-size: 0.8rem; color: hsl(var(--muted-foreground)); user-select: none;">Transcript</summary><div style="margin-top: 0.5rem; white-space: pre-wrap; font-size: 0.9rem; color: hsl(var(--foreground)); line-height: 1.5;">${transcriptRef.current}</div></details>`
+                        const transcriptHtml = transcript && transcript.trim()
+                            ? `<details open style="margin-top: 0.5rem; border: 1px solid hsl(var(--border)); padding: 0.5rem; border-radius: 4px; background: hsl(var(--card));"><summary style="cursor: pointer; font-weight: bold; font-size: 0.8rem; color: hsl(var(--muted-foreground)); user-select: none;">Transcript</summary><div style="margin-top: 0.5rem; white-space: pre-wrap; font-size: 0.9rem; color: hsl(var(--foreground)); line-height: 1.5;">${transcript}</div></details>`
                             : '';
-
-                        addLog("Transcript length: " + transcriptRef.current.length);
 
                         const audioHtml = `<br/><div class="audio-note-container" style="border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 0.5rem; background: hsl(var(--card)); margin: 0.5rem 0;"><audio controls src="${reader.result}" style="width: 100%; margin-bottom: 0.5rem;"></audio>${transcriptHtml}</div><br/>`;
                         insertHtmlAtCursor(audioHtml);
                     };
                     reader.readAsDataURL(blob);
+                });
 
-                    // Stop tracks AFTER giving recognition a chance to finish
-                    stream.getTracks().forEach(track => track.stop());
-                }, 1000); // Increased from 500ms to 1000ms for stability
+                // Stop tracks
+                stream.getTracks().forEach(track => track.stop());
             };
+
+            mediaRecorderRef.current.start();
+            setIsRecording(true);
+            isRecordingRef.current = true;
+
+
 
             mediaRecorderRef.current.start();
             setIsRecording(true);
@@ -270,19 +236,9 @@ const DetailEditor = ({ section, onUpdate }) => {
         addLog("Stopping recording...");
         if (mediaRecorderRef.current && isRecording) {
             // Signal intent to stop everything
-            // Signal intent to stop everything
             mediaRecorderRef.current.stop();
             setIsRecording(false);
             isRecordingRef.current = false;
-
-            // Also stop recognition immediately to prevent hanging
-            if (recognitionRef.current) {
-                try {
-                    recognitionRef.current.stop();
-                } catch (e) {
-                    // Ignore
-                }
-            }
         }
     };
 
@@ -540,10 +496,11 @@ const DetailEditor = ({ section, onUpdate }) => {
                             {isRecording ? <Square size={18} fill="currentColor" /> : <Mic size={18} />}
                         </button>
                         {isRecording && <span className="text-xs text-red-500 font-medium">Recording...</span>}
+                        {transcribing && <span className="text-xs text-blue-500 font-medium animate-pulse">Transcribing...</span>}
                     </div>
 
-                    <button onClick={handleSaveNew} className="btn btn-primary px-4 py-1.5 text-sm">
-                        <Save size={16} /> Add Note
+                    <button onClick={handleSaveNew} className="btn btn-primary px-4 py-1.5 text-sm" disabled={transcribing}>
+                        {transcribing ? 'Wait...' : <><Save size={16} /> Add Note</>}
                     </button>
                 </div>
             </div>
