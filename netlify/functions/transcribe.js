@@ -15,12 +15,25 @@ exports.handler = async (event, context) => {
             };
         }
 
-        // Check content type. We expect a direct binary upload for simplicity or base64 JSON
-        // To keep things robust without external parsers like busboy, we'll suggest the client sends 
-        // a JSON body with base64 encoded audio, OR we can try to parse the raw body if it's multipart.
-        // EASIEST: Client sends raw binary body with Content-Type: audio/webm
+        // Parse JSON body
+        let body;
+        try {
+            body = JSON.parse(event.body);
+        } catch (e) {
+            return {
+                statusCode: 400,
+                body: JSON.stringify({ error: 'Invalid JSON body' }),
+            };
+        }
 
-        const audioBuffer = Buffer.from(event.body, event.isBase64Encoded ? 'base64' : 'binary');
+        if (!body.audio) {
+            return {
+                statusCode: 400,
+                body: JSON.stringify({ error: 'Missing audio data' }),
+            };
+        }
+
+        const audioBuffer = Buffer.from(body.audio, 'base64');
 
         // OpenAI requires a filename for the file part.
         const formData = new FormData();

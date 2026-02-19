@@ -140,36 +140,55 @@ const DetailEditor = ({ section, onUpdate }) => {
 
     const transcribeAudio = async (audioBlob) => {
         setTranscribing(true);
-        addLog("Sending audio to Whisper for transcription...");
+        addLog("Preparing audio for Whisper...");
 
         try {
-            const response = await fetch('/.netlify/functions/transcribe', {
-                method: 'POST',
-                body: audioBlob,
-                headers: {
-                    'Content-Type': 'audio/webm',
-                },
-            });
+            // Convert to Base64
+            const reader = new FileReader();
+            reader.readAsDataURL(audioBlob);
+            reader.onloadend = async () => {
+                const base64Audio = reader.result.split(',')[1]; // Remove data:audio/webm;base64, prefix
 
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || `Server error: ${response.status}`);
-            }
+                try {
+                    addLog("Sending to server...");
+                    const response = await fetch('/.netlify/functions/transcribe', {
+                        method: 'POST',
+                        body: JSON.stringify({ audio: base64Audio }),
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                    });
 
-            const data = await response.json();
-            if (data.text) {
-                addLog("Transcription received: " + data.text.substring(0, 20) + "...");
-                return data.text;
-            } else {
-                addLog("No transcription returned.");
-                return "";
-            }
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({}));
+                        throw new Error(errorData.error || `Server error: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    if (data.text) {
+                        addLog("Transcription received: " + data.text.substring(0, 20) + "...");
+
+                        // Insert transcription into the note
+                        const transcript = data.text;
+                        const transcriptHtml = transcript && transcript.trim()
+                            ? `<details open style="margin-top: 0.5rem; border: 1px solid hsl(var(--border)); padding: 0.5rem; border-radius: 4px; background: hsl(var(--card));"><summary style="cursor: pointer; font-weight: bold; font-size: 0.8rem; color: hsl(var(--muted-foreground)); user-select: none;">Transcript</summary><div style="margin-top: 0.5rem; white-space: pre-wrap; font-size: 0.9rem; color: hsl(var(--foreground)); line-height: 1.5;">${transcript}</div></details>`
+                            : '';
+
+                        const audioHtml = `<br/><div class="audio-note-container" style="border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 0.5rem; background: hsl(var(--card)); margin: 0.5rem 0;"><audio controls src="${reader.result}" style="width: 100%; margin-bottom: 0.5rem;"></audio>${transcriptHtml}</div><br/>`;
+                        insertHtmlAtCursor(audioHtml);
+                    } else {
+                        addLog("No transcription returned (empty).");
+                    }
+                } catch (error) {
+                    console.error("Transcription failed during fetch:", error);
+                    addLog("Transcription failed: " + error.message);
+                    alert("Transcription failed: " + error.message);
+                } finally {
+                    setTranscribing(false);
+                }
+            };
         } catch (error) {
-            console.error("Transcription failed:", error);
-            addLog("Transcription failed: " + error.message);
-            alert("Transcription failed: " + error.message);
-            return "";
-        } finally {
+            console.error("Error processing audio:", error);
             setTranscribing(false);
         }
     };
@@ -196,24 +215,14 @@ const DetailEditor = ({ section, onUpdate }) => {
 
                 // Process immediately
                 addLog("Processing recording...");
+
+                // Stop tracks immediately
+                stream.getTracks().forEach(track => track.stop());
+
                 const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
 
                 // Start transcription
-                transcribeAudio(blob).then(transcript => {
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                        const transcriptHtml = transcript && transcript.trim()
-                            ? `<details open style="margin-top: 0.5rem; border: 1px solid hsl(var(--border)); padding: 0.5rem; border-radius: 4px; background: hsl(var(--card));"><summary style="cursor: pointer; font-weight: bold; font-size: 0.8rem; color: hsl(var(--muted-foreground)); user-select: none;">Transcript</summary><div style="margin-top: 0.5rem; white-space: pre-wrap; font-size: 0.9rem; color: hsl(var(--foreground)); line-height: 1.5;">${transcript}</div></details>`
-                            : '';
-
-                        const audioHtml = `<br/><div class="audio-note-container" style="border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 0.5rem; background: hsl(var(--card)); margin: 0.5rem 0;"><audio controls src="${reader.result}" style="width: 100%; margin-bottom: 0.5rem;"></audio>${transcriptHtml}</div><br/>`;
-                        insertHtmlAtCursor(audioHtml);
-                    };
-                    reader.readAsDataURL(blob);
-                });
-
-                // Stop tracks
-                stream.getTracks().forEach(track => track.stop());
+                transcribeAudio(blob);
             };
 
             mediaRecorderRef.current.start();
