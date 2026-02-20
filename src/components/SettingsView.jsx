@@ -1,11 +1,12 @@
 import { useState, useRef } from 'react';
 import { useUser } from '../context/UserContext';
-import { getAllData, restoreData, manageProjectUsers, getProjectData, restoreProjectData } from '../db';
-import { Moon, Sun, Sunset, Download, Upload, LogOut, User, Edit2, Save, Trash2, X, Plus } from 'lucide-react';
+import { getAllData, restoreData, manageProjectUsers, getProjectData, restoreProjectData, repairOrphanedNotes } from '../db';
+import { Moon, Sun, Sunset, Download, Upload, LogOut, User, Edit2, Save, Trash2, X, Plus, Wrench, RefreshCw, Loader } from 'lucide-react';
 
 const SettingsView = ({ onClose, isAdmin, currentProject, onProjectUpdate }) => {
     const { user, logout, updateUserProfile, deleteUserAccount } = useUser();
     const [theme, setTheme] = useState(document.documentElement.getAttribute('data-theme') || 'dark');
+    const [isRepairing, setIsRepairing] = useState(false);
     const fileInputRef = useRef(null);
 
     // Profile editing state
@@ -123,6 +124,23 @@ const SettingsView = ({ onClose, isAdmin, currentProject, onProjectUpdate }) => 
         } catch (err) {
             console.error("User management error:", err);
             alert("Failed: " + err.message);
+        }
+    };
+
+    const handleRepair = async () => {
+        if (!currentProject?.id) return;
+        if (!confirm("This will attempt to restore notes that were orphaned due to the duplication bug. It will safely re-link them to your current sections. Continue?")) return;
+
+        setIsRepairing(true);
+        try {
+            const result = await repairOrphanedNotes(currentProject.id);
+            alert(`Repair complete! Successfully restored ${result.count} notes. These should now be visible in your section histories.`);
+            if (onProjectUpdate) onProjectUpdate();
+        } catch (err) {
+            console.error("Repair failed:", err);
+            alert("Repair failed: " + err.message);
+        } finally {
+            setIsRepairing(false);
         }
     };
 
@@ -281,6 +299,28 @@ const SettingsView = ({ onClose, isAdmin, currentProject, onProjectUpdate }) => 
                                         </button>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="card">
+                        <h3 className="mb-4 text-lg font-medium flex items-center gap-2">
+                            <Wrench size={20} /> Maintenance
+                        </h3>
+                        <div className="space-y-4">
+                            <div className="flex justify-between items-center bg-[hsl(var(--background))] p-4 rounded-md border border-[hsl(var(--border))]">
+                                <div>
+                                    <strong className="block">Repair Orphaned Notes</strong>
+                                    <span className="text-sm text-muted">Restore history lost during duplication issues</span>
+                                </div>
+                                <button
+                                    onClick={handleRepair}
+                                    className="btn btn-outline flex gap-2 items-center"
+                                    disabled={isRepairing}
+                                >
+                                    {isRepairing ? <Loader size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                                    {isRepairing ? 'Repairing...' : 'Repair Now'}
+                                </button>
                             </div>
                         </div>
                     </div>

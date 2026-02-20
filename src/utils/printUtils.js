@@ -13,7 +13,7 @@ export const printSections = async (sections, username) => {
     await Promise.all(
         sectionList.map(async (section) => {
             try {
-                detailsMap[section.id] = await getDetails(section.id, username);
+                detailsMap[section.id] = await getDetails(section.docId, username);
             } catch {
                 detailsMap[section.id] = [];
             }

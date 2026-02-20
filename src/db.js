@@ -24,6 +24,15 @@ const projectsRef = collection(db, 'projects');
 // Helper to snapshot to array
 const snapToData = (snap) => snap.docs.map(d => ({ id: d.id, ...d.data(), docId: d.id }));
 
+// Helper to extract short ID from a potentially composite ID
+const getShortId = (section, projectId) => {
+    let sid = section.id || section.docId || "";
+    if (projectId && sid.startsWith(`${projectId}_`)) {
+        sid = sid.substring(projectId.length + 1);
+    }
+    return sid;
+};
+
 export const getProjects = async (username) => {
     // Projects created by or accessible to user
     const q = query(projectsRef, orderBy('createdAt', 'desc'));
@@ -136,16 +145,19 @@ export const getSections = async (username, projectId) => {
 export const addSection = async (section, username, projectId) => {
     if (!projectId && !section.projectId) throw new Error("Project ID is required for addSection");
     const pid = projectId || section.projectId;
-    // Composite ID to prevent cross-project collisions
-    const docId = `${pid}_${section.id}`;
+
+    // Normalize ID to prevent double-prefixing (e.g. TripA_TripA_Sec1)
+    const shortId = getShortId(section, pid);
+    const compositeDocId = `${pid}_${shortId}`;
 
     const data = {
         ...section,
+        id: shortId, // Ensure internal ID is short
         projectId: pid,
         lastModifiedBy: username || 'anon',
         lastModified: new Date().toISOString()
     };
-    await setDoc(doc(sectionsRef, docId), data, { merge: true });
+    await setDoc(doc(sectionsRef, compositeDocId), data, { merge: true });
 };
 
 export const addSections = async (sections, username, { merge = false, projectId = null } = {}) => {
@@ -154,10 +166,13 @@ export const addSections = async (sections, username, { merge = false, projectId
     let count = 0;
 
     for (const section of sections) {
-        const docId = `${projectId}_${section.id}`;
-        const docRef = doc(sectionsRef, docId);
+        const shortId = getShortId(section, projectId);
+        const compositeDocId = `${projectId}_${shortId}`;
+        const docRef = doc(sectionsRef, compositeDocId);
+
         const data = {
             ...section,
+            id: shortId,
             projectId: projectId,
             lastModifiedBy: username || 'anon',
             lastModified: new Date().toISOString()
@@ -215,6 +230,49 @@ export const updateDetail = async (detail, username) => {
 
 export const deleteDetail = async (id, username) => {
     await deleteDoc(doc(detailsRef, id));
+};
+
+/**
+ * Data Repair Utility: Fixes notes orphaned by the duplication bug.
+ * Moves notes from "double-prefixed" section IDs (e.g., TripA_TripA_Sec1) 
+ * back to their correct single-prefixed ID (e.g., TripA_Sec1).
+ */
+export const repairOrphanedNotes = async (projectId) => {
+    if (!projectId) throw new Error("Project ID is required for repair");
+
+    console.log(`[Repair] Starting repair for project: ${projectId}`);
+
+    // 1. Fetch all details for this project
+    const q = query(detailsRef, where('projectId', '==', projectId));
+    const snap = await getDocs(q);
+    const allDetails = snapToData(snap);
+
+    const doublePrefix = `${projectId}_${projectId}_`;
+    const batch = writeBatch(db);
+    let count = 0;
+
+    for (const detail of allDetails) {
+        if (detail.sectionId && detail.sectionId.startsWith(doublePrefix)) {
+            // Correct the sectionId by removing the extra project prefix
+            const correctedSectionId = detail.sectionId.substring(projectId.length + 1);
+
+            console.log(`[Repair] Relinking note ${detail.id}: ${detail.sectionId} -> ${correctedSectionId}`);
+
+            batch.update(doc(detailsRef, detail.id), {
+                sectionId: correctedSectionId
+            });
+            count++;
+
+            if (count >= 400) {
+                await batch.commit();
+                count = 0;
+            }
+        }
+    }
+
+    if (count > 0) await batch.commit();
+    console.log(`[Repair] Completed. Relinked ${allDetails.filter(d => d.sectionId && d.sectionId.startsWith(doublePrefix)).length} notes.`);
+    return { success: true, count: allDetails.filter(d => d.sectionId && d.sectionId.startsWith(doublePrefix)).length };
 };
 
 export const deleteSection = async (sectionDocId, username) => {

@@ -59,6 +59,27 @@ const DetailEditor = ({ section, onUpdate }) => {
     }, [details]);
 
 
+    const [recordingDuration, setRecordingDuration] = useState(0);
+
+    useEffect(() => {
+        let interval;
+        if (voiceStatus === 'recording') {
+            setRecordingDuration(0);
+            interval = setInterval(() => {
+                setRecordingDuration(prev => prev + 1);
+            }, 1000);
+        } else {
+            setRecordingDuration(0);
+        }
+        return () => clearInterval(interval);
+    }, [voiceStatus]);
+
+    const formatDuration = (seconds) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+    };
+
     // Whisper sentinel strings that should never appear in a note as real transcript text.
     const WHISPER_SENTINEL_RE = /^\s*(\[BLANK_AUDIO\]|\[SILENCE\]|\[ Silence \]|no speech detected\.?|\(no speech\)|\.)?\s*$/i;
 
@@ -426,7 +447,7 @@ const DetailEditor = ({ section, onUpdate }) => {
                         >
                             {voiceStatus === 'recording' ? <Square size={18} fill="currentColor" /> : <Mic size={18} />}
                         </button>
-                        {voiceStatus === 'recording' && <span className="text-xs text-red-500 font-medium">Recording...</span>}
+                        {voiceStatus === 'recording' && <span className="text-xs text-red-500 font-medium">... {formatDuration(recordingDuration)}</span>}
                         {voiceStatus === 'transcribing' && <span className="text-xs text-blue-500 font-medium animate-pulse">Processing...</span>}
                     </div>
 

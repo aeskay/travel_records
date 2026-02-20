@@ -40,7 +40,7 @@ export const exportToExcel = async (sections, username) => {
             try {
                 // If username is not provided, this might fail depending on db implementation
                 // But typically read access might be open or require just valid auth
-                const details = await getDetails(section.id, username);
+                const details = await getDetails(section.docId, username);
                 if (details && Array.isArray(details)) {
                     details.forEach(detail => {
                         // Strip HTML from content for Excel readability
