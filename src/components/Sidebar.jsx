@@ -87,7 +87,7 @@ const Sidebar = ({
                         onClick={() => onSelectSection(null)}
                         title="Go to Dashboard"
                     >
-                        0-7147: Travel Records
+                        TechMRT Trip Records
                     </h2>
                     {projectName && (
                         <div

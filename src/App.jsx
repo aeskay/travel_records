@@ -220,7 +220,7 @@ function AppContent() {
                 setCurrentView('dashboard');
               }}
             >
-              0-7147: Travel Records
+              TechMRT Trip Records
             </span>
           </div>
 

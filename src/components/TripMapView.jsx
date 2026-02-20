@@ -15,6 +15,8 @@ const DARK_TILES = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.pn
 const LIGHT_TILES = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
 const OSRM_BASE = 'https://router.project-osrm.org/route/v1/driving';
 
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 // --- Custom Marker Icons ---
 const createMarkerIcon = (color, borderColor) => {
     return L.divIcon({
@@ -135,24 +137,39 @@ const fetchOSRMRouteWithDuration = async (waypoints) => {
     if (!waypoints || waypoints.length < 2) return null;
 
     // Helper for single chunk fetch — returns { geometry, durationSeconds }
-    const fetchChunk = async (chunk) => {
+    const fetchChunk = async (chunk, retries = 3) => {
         // OSRM expects lng,lat format
         const coordString = chunk.map(([lat, lng]) => `${lng},${lat}`).join(';');
         const url = `${OSRM_BASE}/${coordString}?overview=full&geometries=geojson`;
 
-        try {
-            const res = await fetch(url);
-            const data = await res.json();
-            if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
-                const route = data.routes[0];
-                // GeoJSON coordinates are [lng, lat], Leaflet needs [lat, lng]
-                return {
-                    geometry: route.geometry.coordinates.map(([lng, lat]) => [lat, lng]),
-                    durationSeconds: route.duration,
-                };
+        for (let attempt = 0; attempt < retries; attempt++) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+            try {
+                const res = await fetch(url, { signal: controller.signal });
+                clearTimeout(timeoutId);
+
+                if (!res.ok) {
+                    throw new Error(`OSRM HTTP error: ${res.status}`);
+                }
+
+                const data = await res.json();
+                if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+                    const route = data.routes[0];
+                    return {
+                        geometry: route.geometry.coordinates.map(([lng, lat]) => [lat, lng]),
+                        durationSeconds: route.duration,
+                    };
+                }
+                throw new Error(`OSRM error code: ${data.code}`);
+            } catch (err) {
+                clearTimeout(timeoutId);
+                console.warn(`OSRM chunk fetch attempt ${attempt + 1} failed:`, err.message);
+                if (attempt < retries - 1) {
+                    await sleep(500 * (attempt + 1)); // Backoff
+                }
             }
-        } catch (err) {
-            console.warn('OSRM chunk fetch failed:', err);
         }
         return null;
     };
@@ -171,6 +188,7 @@ const fetchOSRMRouteWithDuration = async (waypoints) => {
         const chunk = waypoints.slice(i, i + chunkSize);
         if (chunk.length < 2) break;
 
+        await sleep(200); // Rate limiting protection
         const chunkResult = await fetchChunk(chunk);
 
         if (chunkResult) {
@@ -410,8 +428,13 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
     const [showAllDays, setShowAllDays] = useState(false);
     const [dayRoutes, setDayRoutes] = useState({}); // { dayNum: coordinates[] }
     const [dayDriveMinutes, setDayDriveMinutes] = useState({}); // { dayNum: driveMinutes } from OSRM
+    const [dayRouteErrors, setDayRouteErrors] = useState({}); // { dayNum: boolean }
     const [optimizingDay, setOptimizingDay] = useState(null);
     const [isGlobalOptimizing, setIsGlobalOptimizing] = useState(false);
+
+    // Routing Cache and Locks
+    const routingCache = useRef(new Map()); // dayNum (or 'main') -> stringifiedWaypoints
+    const isRoutingBusy = useRef(false);
 
     const handleGlobalOptimize = async () => {
         if (!isAdmin || !onUpdateSections) return;
@@ -918,16 +941,17 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
 
             stats[day.day] = {
                 miles: totalMiles.toFixed(1),
-                timeStr: (drivingMinutes === null) ? "Calculating..." : `${h}h ${m}m`,
-                driveStr: (drivingMinutes === null) ? "..." : `${driveH}h ${driveM}m`,
+                timeStr: dayRouteErrors[day.day] ? "Road route failed" : (drivingMinutes === null ? "Calculating..." : `${h}h ${m}m`),
+                driveStr: dayRouteErrors[day.day] ? "N/A" : (drivingMinutes === null ? "..." : `${driveH}h ${driveM}m`),
                 stopStr: `${stopH}h ${stopM}m`,
                 totalMinutes: totalTime,
-                isLoading: (drivingMinutes === null)
+                isLoading: (drivingMinutes === null) && !dayRouteErrors[day.day],
+                isError: !!dayRouteErrors[day.day]
             };
         });
 
         return stats;
-    }, [daysPlan, sections, homePosition, dayDriveMinutes]);
+    }, [daysPlan, sections, homePosition, dayDriveMinutes, dayRouteErrors]);
 
     const getEstimatedTime = (day) => {
         return dayStats[day.day]?.timeStr || "0h 0m";
@@ -955,8 +979,15 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
 
     // Fetch OSRM route when waypoints change
     useEffect(() => {
+        const waypointsKey = JSON.stringify(routeWaypoints);
         if (routeWaypoints.length < 2) {
             setRouteGeometry(null);
+            routingCache.current.set('main', waypointsKey);
+            return;
+        }
+
+        // Deduplication: Only fetch if waypoints actually changed
+        if (routingCache.current.get('main') === waypointsKey) {
             return;
         }
 
@@ -965,8 +996,9 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
 
         fetchOSRMRoute(routeWaypoints).then(geometry => {
             if (!cancelled) {
-                setRouteGeometry(geometry); // null means fallback to straight lines
+                setRouteGeometry(geometry);
                 setRouteLoading(false);
+                routingCache.current.set('main', waypointsKey);
             }
         });
 
@@ -975,60 +1007,90 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
 
     // Fetch routes for each day (geometry + real OSRM drive durations)
     useEffect(() => {
+        let cancelled = false;
+
         const fetchDayRoutes = async () => {
-            const newDayRoutes = {};
-            const newDayDriveMinutes = {};
+            // Lock to prevent concurrent multi-fetch operations
+            if (isRoutingBusy.current) return;
+            isRoutingBusy.current = true;
 
-            // Sort days to ensure sequence
-            const sortedDays = [...daysPlan].sort((a, b) => a.day - b.day);
+            try {
+                const newDayRoutes = { ...dayRoutes };
+                const newDayDriveMinutes = { ...dayDriveMinutes };
+                const newDayErrors = { ...dayRouteErrors };
+                let modified = false;
 
-            // Track where the previous day ended
-            let lastLocation = homePosition;
+                // Sort days to ensure sequence
+                const sortedDays = [...daysPlan].sort((a, b) => a.day - b.day);
 
-            for (const day of sortedDays) {
-                // Get sections for this day
-                const daySections = sections.filter(s =>
-                    day.sequences.includes(Number(s.test_sequence)) && s.coordinates
-                ).sort((a, b) => Number(a.test_sequence) - Number(b.test_sequence));
+                // Track where the previous day ended
+                let lastLocation = homePosition;
 
-                if (daySections.length === 0) continue;
+                for (const day of sortedDays) {
+                    if (cancelled) break;
 
-                const dayMappable = daySections
-                    .map(s => ({ ...s, latLng: parseCoords(s.coordinates) }))
-                    .filter(s => s.latLng);
+                    // Get sections for this day
+                    const daySections = sections.filter(s =>
+                        day.sequences.includes(Number(s.test_sequence)) && s.coordinates
+                    ).sort((a, b) => Number(a.test_sequence) - Number(b.test_sequence));
 
-                if (dayMappable.length === 0) continue;
+                    const dayMappable = daySections
+                        .map(s => ({ ...s, latLng: parseCoords(s.coordinates) }))
+                        .filter(s => s.latLng);
 
-                // Waypoints: Previous End -> Stops
-                const waypoints = [lastLocation, ...dayMappable.map(s => s.latLng)];
+                    // Waypoints: Previous End -> Stops
+                    const waypoints = [lastLocation, ...dayMappable.map(s => s.latLng)];
 
-                // Update lastLocation for the next day
-                lastLocation = dayMappable[dayMappable.length - 1].latLng;
+                    // Update lastLocation for the next day's starting point even if we don't fetch
+                    if (dayMappable.length > 0) {
+                        lastLocation = dayMappable[dayMappable.length - 1].latLng;
+                    }
 
-                // SPECIAL RULE: If this is the LAST day, route back to Home
-                if (day.day === sortedDays[sortedDays.length - 1].day) {
-                    waypoints.push(homePosition);
-                }
+                    // LAST day rules
+                    if (day.day === sortedDays[sortedDays.length - 1].day && waypoints.length > 0) {
+                        waypoints.push(homePosition);
+                    }
 
-                if (waypoints.length >= 2) {
-                    const result = await fetchOSRMRouteWithDuration(waypoints);
-                    if (result) {
-                        newDayRoutes[day.day] = result.geometry;
-                        // Store actual drive time in minutes (OSRM returns seconds)
-                        newDayDriveMinutes[day.day] = result.durationSeconds / 60;
-                    } else {
-                        // Fallback to straight lines, no real duration
-                        newDayRoutes[day.day] = waypoints;
+                    if (waypoints.length >= 2) {
+                        const waypointsKey = JSON.stringify(waypoints);
+                        // Deduplication: Only fetch if this specific day changed
+                        if (routingCache.current.get(`day-${day.day}`) === waypointsKey && newDayRoutes[day.day]) {
+                            continue;
+                        }
+
+                        console.log(`[Deduplicator] Fetching new route for Day ${day.day}`);
+                        await sleep(300); // Rate limiting
+                        const result = await fetchOSRMRouteWithDuration(waypoints);
+
+                        if (result) {
+                            newDayRoutes[day.day] = result.geometry;
+                            newDayDriveMinutes[day.day] = result.durationSeconds / 60;
+                            newDayErrors[day.day] = false;
+                        } else {
+                            // Fallback
+                            newDayRoutes[day.day] = waypoints;
+                            newDayErrors[day.day] = true;
+                        }
+                        routingCache.current.set(`day-${day.day}`, waypointsKey);
+                        modified = true;
                     }
                 }
+
+                if (modified && !cancelled) {
+                    setDayRoutes(newDayRoutes);
+                    setDayDriveMinutes(newDayDriveMinutes);
+                    setDayRouteErrors(newDayErrors);
+                }
+            } finally {
+                isRoutingBusy.current = false;
             }
-            setDayRoutes(newDayRoutes);
-            setDayDriveMinutes(newDayDriveMinutes);
         };
 
         if (showDaysPlan || highlightedDays.size > 0) {
             fetchDayRoutes();
         }
+
+        return () => { cancelled = true; };
     }, [daysPlan, sections, showDaysPlan, highlightedDays.size, homePosition]);
 
     // Fallback straight-line positions
@@ -1324,7 +1386,11 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                                             Day {day.day}
                                         </span>
                                         <span className="text-xs text-muted flex flex-col sm:flex-row sm:gap-2">
-                                            {dayStats[day.day]?.isLoading ? (
+                                            {dayStats[day.day]?.isError ? (
+                                                <span className="text-rose-500 flex items-center gap-1">
+                                                    <Navigation size={10} /> Road route unavailable
+                                                </span>
+                                            ) : dayStats[day.day]?.isLoading ? (
                                                 <span className="italic">Estimating time...</span>
                                             ) : (
                                                 <span>Est. Time: {getEstimatedTime(day)}</span>

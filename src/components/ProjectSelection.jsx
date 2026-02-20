@@ -203,7 +203,7 @@ const ProjectSelection = ({ user, onSelectProject }) => {
                 {/* Left Sidebar */}
                 <div className="dashboard-sidebar">
                     <div className="user-greeting">
-                        <h1>Trip Planner</h1>
+                        <h1>TechMRT Trips</h1>
                         <p>Welcome back, {(user.username || 'Traveler').split('@')[0]}</p>
                     </div>
 
