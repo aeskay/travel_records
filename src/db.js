@@ -27,8 +27,11 @@ const snapToData = (snap) => snap.docs.map(d => ({ id: d.id, ...d.data(), docId:
 // Helper to extract short ID from a potentially composite ID
 const getShortId = (section, projectId) => {
     let sid = section.id || section.docId || "";
-    if (projectId && sid.startsWith(`${projectId}_`)) {
-        sid = sid.substring(projectId.length + 1);
+    if (projectId) {
+        // Recursively remove project prefix to handle "double-prefixed" older IDs (e.g. Proj_Proj_Sec)
+        while (sid.startsWith(`${projectId}_`)) {
+            sid = sid.substring(projectId.length + 1);
+        }
     }
     return sid;
 };
@@ -130,8 +133,24 @@ export const getSections = async (username, projectId) => {
         }
 
         const querySnapshot = await getDocs(q);
-        const sections = snapToData(querySnapshot);
-        console.log(`[getSections] Found: ${sections.length} sections.`);
+        const rawSections = snapToData(querySnapshot);
+        console.log(`[getSections] Found: ${rawSections.length} raw records.`);
+
+        // Deduplicate using a Map based on the Short ID
+        // If multiple versions exist (due to the prefixing bug), pick the one with latest lastModified
+        const dedupMap = new Map();
+
+        rawSections.forEach(s => {
+            const sid = getShortId(s, projectId);
+            const current = dedupMap.get(sid);
+
+            if (!current || new Date(s.lastModified || 0) > new Date(current.lastModified || 0)) {
+                dedupMap.set(sid, s);
+            }
+        });
+
+        const sections = Array.from(dedupMap.values());
+        console.log(`[getSections] Returning: ${sections.length} unique sections.`);
 
         // Sort by the display ID
         return sections.sort((a, b) => (a.id || "").localeCompare(b.id || ""));
@@ -273,6 +292,87 @@ export const repairOrphanedNotes = async (projectId) => {
     if (count > 0) await batch.commit();
     console.log(`[Repair] Completed. Relinked ${allDetails.filter(d => d.sectionId && d.sectionId.startsWith(doublePrefix)).length} notes.`);
     return { success: true, count: allDetails.filter(d => d.sectionId && d.sectionId.startsWith(doublePrefix)).length };
+};
+
+/**
+ * Permanent Database Cleanup: Merges and deletes duplicate section records.
+ */
+export const cleanupDuplicateSections = async (projectId) => {
+    if (!projectId) throw new Error("Project ID is required for cleanup");
+
+    console.log(`[Cleanup] Starting cleanup for project: ${projectId}`);
+    const q = query(sectionsRef, where('projectId', '==', projectId));
+    const snap = await getDocs(q);
+    const rawSections = snapToData(snap);
+
+    const doublePrefix = `${projectId}_${projectId}_`;
+    const toDelete = [];
+    const toUpdate = []; // [{docId, data}]
+
+    // Group by short ID
+    const groups = {};
+    rawSections.forEach(s => {
+        const sid = getShortId(s, projectId);
+        if (!groups[sid]) groups[sid] = [];
+        groups[sid].push(s);
+    });
+
+    for (const sid in groups) {
+        const members = groups[sid];
+        if (members.length <= 1) continue;
+
+        // Find the "best" one (single-prefixed and latest)
+        const correctDocId = `${projectId}_${sid}`;
+        const malformedOnes = members.filter(m => m.docId.startsWith(doublePrefix));
+        const correctOne = members.find(m => m.docId === correctDocId);
+
+        // Find the overall latest data among all members
+        const latestMember = [...members].sort((a, b) => new Date(b.lastModified || 0) - new Date(a.lastModified || 0))[0];
+
+        if (correctOne) {
+            // Update the correct one if it's not the latest
+            if (latestMember.docId !== correctOne.docId) {
+                console.log(`[Cleanup] Updating ${correctOne.docId} with newer data from ${latestMember.docId}`);
+                const { docId, id, ...cleanData } = latestMember;
+                toUpdate.push({ docId: correctOne.docId, data: cleanData });
+            }
+        } else {
+            // Correct one doesn't exist? Create it from the latest
+            console.log(`[Cleanup] Creating missing ${correctDocId} from ${latestMember.docId}`);
+            const { docId, id, ...cleanData } = latestMember;
+            toUpdate.push({ docId: correctDocId, data: cleanData });
+        }
+
+        // Anything that isn't the correctDocId should be deleted
+        malformedOnes.forEach(m => {
+            if (m.docId !== correctDocId) {
+                toDelete.push(m.docId);
+            }
+        });
+    }
+
+    const batch = writeBatch(db);
+    let count = 0;
+
+    // Process Updates
+    for (const item of toUpdate) {
+        batch.set(doc(sectionsRef, item.docId), { ...item.data, id: getShortId({ id: item.docId }, projectId) }, { merge: true });
+        count++;
+        if (count >= 400) { await batch.commit(); count = 0; }
+    }
+
+    // Process Deletions
+    for (const dId of toDelete) {
+        console.log(`[Cleanup] Deleting duplicate: ${dId}`);
+        batch.delete(doc(sectionsRef, dId));
+        count++;
+        if (count >= 400) { await batch.commit(); count = 0; }
+    }
+
+    if (count > 0) await batch.commit();
+
+    console.log(`[Cleanup] Completed. Updated ${toUpdate.length} and deleted ${toDelete.length} records.`);
+    return { success: true, updated: toUpdate.length, deleted: toDelete.length };
 };
 
 export const deleteSection = async (sectionDocId, username) => {

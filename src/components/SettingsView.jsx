@@ -1,12 +1,13 @@
 import { useState, useRef } from 'react';
 import { useUser } from '../context/UserContext';
-import { getAllData, restoreData, manageProjectUsers, getProjectData, restoreProjectData, repairOrphanedNotes } from '../db';
+import { getAllData, restoreData, manageProjectUsers, getProjectData, restoreProjectData, repairOrphanedNotes, cleanupDuplicateSections } from '../db';
 import { Moon, Sun, Sunset, Download, Upload, LogOut, User, Edit2, Save, Trash2, X, Plus, Wrench, RefreshCw, Loader } from 'lucide-react';
 
 const SettingsView = ({ onClose, isAdmin, currentProject, onProjectUpdate }) => {
     const { user, logout, updateUserProfile, deleteUserAccount } = useUser();
     const [theme, setTheme] = useState(document.documentElement.getAttribute('data-theme') || 'dark');
     const [isRepairing, setIsRepairing] = useState(false);
+    const [isCleaning, setIsCleaning] = useState(false);
     const fileInputRef = useRef(null);
 
     // Profile editing state
@@ -141,6 +142,23 @@ const SettingsView = ({ onClose, isAdmin, currentProject, onProjectUpdate }) => 
             alert("Repair failed: " + err.message);
         } finally {
             setIsRepairing(false);
+        }
+    };
+
+    const handleCleanup = async () => {
+        if (!currentProject?.id) return;
+        if (!confirm("This will permanently merge and delete duplicated section records from the database. It is safe and will keep your newest data. Continue?")) return;
+
+        setIsCleaning(true);
+        try {
+            const result = await cleanupDuplicateSections(currentProject.id);
+            alert(`Cleanup complete! Updated ${result.updated} and deleted ${result.deleted} duplicate sections.`);
+            if (onProjectUpdate) onProjectUpdate();
+        } catch (err) {
+            console.error("Cleanup failed:", err);
+            alert("Cleanup failed: " + err.message);
+        } finally {
+            setIsCleaning(false);
         }
     };
 
@@ -320,6 +338,21 @@ const SettingsView = ({ onClose, isAdmin, currentProject, onProjectUpdate }) => 
                                 >
                                     {isRepairing ? <Loader size={16} className="animate-spin" /> : <RefreshCw size={16} />}
                                     {isRepairing ? 'Repairing...' : 'Repair Now'}
+                                </button>
+                            </div>
+
+                            <div className="flex justify-between items-center bg-[hsl(var(--background))] p-4 rounded-md border border-[hsl(var(--border))]">
+                                <div>
+                                    <strong className="block text-rose-500">Cleanup Duplicate Sections</strong>
+                                    <span className="text-sm text-muted">Permanently remove redundant records from database</span>
+                                </div>
+                                <button
+                                    onClick={handleCleanup}
+                                    className="btn btn-outline flex gap-2 items-center text-rose-500 border-rose-500/30 hover:bg-rose-500/10"
+                                    disabled={isCleaning}
+                                >
+                                    {isCleaning ? <Loader size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                                    {isCleaning ? 'Cleaning...' : 'Clean Now'}
                                 </button>
                             </div>
                         </div>

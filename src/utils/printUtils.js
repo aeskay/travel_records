@@ -5,24 +5,46 @@ import { getDetails } from '../db';
  * Opens a new window and triggers print.
  */
 export const printSections = async (sections, username) => {
-    // Ensure sections is always an array
-    const sectionList = Array.isArray(sections) ? sections : [sections];
+    // 1. Deduplicate sections by docId
+    const uniqueMap = new Map();
+    const rawList = Array.isArray(sections) ? sections : [sections];
+    rawList.forEach(s => {
+        if (s && s.docId && !uniqueMap.has(s.docId)) {
+            uniqueMap.set(s.docId, s);
+        }
+    });
 
-    // Fetch details for all sections in parallel
+    // 2. Sort sections
+    // - Numerical by test_sequence if present
+    // - Alphabetical by id if sequence is missing
+    const sectionList = Array.from(uniqueMap.values()).sort((a, b) => {
+        const seqA = a.test_sequence && String(a.test_sequence).trim() !== '' ? Number(a.test_sequence) : Infinity;
+        const seqB = b.test_sequence && String(b.test_sequence).trim() !== '' ? Number(b.test_sequence) : Infinity;
+
+        if (seqA !== seqB) {
+            return seqA - seqB;
+        }
+
+        // Fallback to alphabetical ID
+        return (a.id || '').localeCompare(b.id || '');
+    });
+
+    // 3. Fetch details for all sections in parallel
     const detailsMap = {};
     await Promise.all(
         sectionList.map(async (section) => {
             try {
-                detailsMap[section.id] = await getDetails(section.docId, username);
+                // Map by docId for unique lookup
+                detailsMap[section.docId] = await getDetails(section.docId, username);
             } catch {
-                detailsMap[section.id] = [];
+                detailsMap[section.docId] = [];
             }
         })
     );
 
-    // Build HTML pages
+    // 4. Build HTML pages
     const pagesHtml = sectionList.map((section, idx) => {
-        const details = detailsMap[section.id] || [];
+        const details = detailsMap[section.docId] || [];
         const pageBreak = idx > 0 ? 'page-break-before: always;' : '';
 
         const notesHtml = details.length > 0
@@ -37,7 +59,7 @@ export const printSections = async (sections, username) => {
         return `
             <div class="section-page" style="${pageBreak}">
                 <div class="section-header">
-                    <h1>${section.id}</h1>
+                    <h1>${section.test_sequence ? `<span style="color: hsl(var(--primary)); margin-right: 8px;">#${section.test_sequence}</span>` : ''}${section.id}</h1>
                     <span class="badge">${section.type || 'Uncategorized'}</span>
                     <span class="status ${section.status === 'Evaluated' ? 'evaluated' : 'pending'}">${section.status || 'Pending'}</span>
                 </div>
