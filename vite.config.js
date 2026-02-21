@@ -37,7 +37,7 @@ export default defineConfig({
       includeAssets: ['ttu-logo.svg'],
       manifest: {
         name: 'TechMRT Travels',
-        short_name: 'Sections',
+        short_name: 'TechMRT Trips',
         description: 'Manage highway section information offline',
         theme_color: '#ffffff',
         icons: [
