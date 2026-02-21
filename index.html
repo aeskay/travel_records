@@ -7,6 +7,12 @@
   <link rel="apple-touch-icon" href="/ttu-logo.svg" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>TechMRT Travels</title>
+  <script>
+    (function () {
+      const savedTheme = localStorage.getItem('app-theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', savedTheme);
+    })();
+  </script>
 </head>
 
 <body>

@@ -438,8 +438,7 @@ select.input option {
 .section-id {
     font-weight: 600;
     font-size: 0.95rem;
-    /* color: hsl(var(--foreground)); */
-    color: rgb(219, 219, 219);
+    color: hsl(var(--foreground));
 }
 
 .section-subtitle {
@@ -666,6 +665,10 @@ select.input option {
 
 @media (min-width: 769px) {
     .mobile-header {
+        display: none;
+    }
+
+    .mobile-shrink {
         display: none;
     }
 }
@@ -1397,6 +1400,7 @@ select.input option {
 .popup-section-id {
     font-weight: 700;
     font-size: 0.95rem;
+    color: hsl(var(--foreground));
 }
 
 .popup-category-badge {
@@ -1558,8 +1562,8 @@ select.input option {
     justify-content: center;
     font-size: 11px;
     font-weight: 800;
-    color: #fff;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    color: hsl(var(--primary-foreground));
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
     font-family: 'Inter', system-ui, sans-serif;
 }
 

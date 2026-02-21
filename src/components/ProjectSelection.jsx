@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { getProjects, createProject, deleteProject, updateProject, consolidateLegacyProjects, duplicateProject } from '../db';
+import { getProjects, createProject, deleteProject, updateProject, duplicateProject } from '../db';
 import { useUser } from '../context/UserContext';
 import { Plus, FolderOpen, Loader, Trash2, Edit2, Map, Calendar, X, Check, Wrench, User, Mail, Moon, Sun, Sunset, LogOut, Copy } from 'lucide-react';
 import './ProjectSelection.css';
@@ -13,6 +13,22 @@ const ProjectSelection = ({ user, onSelectProject }) => {
     const [error, setError] = useState(null);
     const [editingId, setEditingId] = useState(null);
     const [editName, setEditName] = useState('');
+    const [editStartDate, setEditStartDate] = useState('');
+    const [editEndDate, setEditEndDate] = useState('');
+
+    const formatDate = (dateStr) => {
+        if (!dateStr) return '';
+        // Add time to avoid timezone shifts on date-only strings
+        const date = new Date(dateStr + 'T12:00:00');
+        const months = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'Jun.', 'Jul.', 'Aug.', 'Sep.', 'Oct.', 'Nov.', 'Dec.'];
+        return `${months[date.getMonth()]} ${date.getDate()} ${date.getFullYear()}`;
+    };
+
+    const formatDateRange = (start, end) => {
+        if (!start) return 'No dates set';
+        if (!end || start === end) return formatDate(start);
+        return `${formatDate(start)} — ${formatDate(end)}`;
+    };
 
     // Admin email check (case-insensitive)
     const isAdmin = user?.email?.toLowerCase() === 'samuel.alalade@ttu.edu';
@@ -73,19 +89,7 @@ const ProjectSelection = ({ user, onSelectProject }) => {
         }
     };
 
-    const handleConsolidate = async () => {
-        setLoading(true);
-        try {
-            const result = await consolidateLegacyProjects(user.username);
-            alert(`Fixed ${result.deletedProjects} duplicate trips and restored ${result.totalSections} sections.`);
-            await fetchProjects();
-        } catch (err) {
-            console.error("Error consolidating:", err);
-            setError("Failed to fix data issues.");
-        } finally {
-            setLoading(false);
-        }
-    };
+
 
     const handleDuplicate = async (e, projectId, projectName) => {
         e.stopPropagation();
@@ -111,12 +115,18 @@ const ProjectSelection = ({ user, onSelectProject }) => {
         e.stopPropagation();
         setEditingId(project.id);
         setEditName(project.name);
+        setEditStartDate(project.startDate || '');
+        setEditEndDate(project.endDate || '');
     };
 
     const saveEdit = async (e) => {
         e.stopPropagation(); // prevent select
         try {
-            await updateProject(editingId, { name: editName }, user.username);
+            await updateProject(editingId, {
+                name: editName,
+                startDate: editStartDate,
+                endDate: editEndDate
+            }, user.username);
             setEditingId(null);
             fetchProjects();
         } catch (err) {
@@ -186,6 +196,7 @@ const ProjectSelection = ({ user, onSelectProject }) => {
         else if (theme === 'medium') newTheme = 'dark';
 
         document.documentElement.setAttribute('data-theme', newTheme);
+        localStorage.setItem('app-theme', newTheme);
         setTheme(newTheme);
     };
 
@@ -235,21 +246,7 @@ const ProjectSelection = ({ user, onSelectProject }) => {
                         </button>
                     </div>
 
-                    {isAdmin && (
-                        <div className="mt-auto">
-                            {projects.some(p => p.name.includes("Legacy")) && (
-                                <div className="maintenance-box">
-                                    <Wrench size={16} className="text-amber-500" />
-                                    <div>
-                                        <div className="text-xs font-bold text-amber-500 uppercase">Maintenance</div>
-                                        <button onClick={handleConsolidate} className="maintenance-btn">
-                                            Fix Duplicate Trips
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
+
                 </div>
 
                 {/* Main Content Area */}
@@ -348,7 +345,7 @@ const ProjectSelection = ({ user, onSelectProject }) => {
                                     </div>
                                     <div style={{ width: '80%', textAlign: 'center' }}>
                                         <div style={{ marginBottom: '20px' }}>
-                                            <span style={{ fontSize: '13px', fontWeight: '500', color: '#a1a1aa' }}>Create New Trip</span>
+                                            <span style={{ fontSize: '13px', fontWeight: '500', color: 'hsl(var(--muted-foreground))' }}>Create New Trip</span>
                                         </div>
                                         <form onSubmit={handleCreate} style={{ marginTop: '8px', display: 'flex', gap: '8px' }} onClick={e => e.stopPropagation()}>
                                             <input
@@ -366,8 +363,8 @@ const ProjectSelection = ({ user, onSelectProject }) => {
                                                 style={{
                                                     padding: '4px 12px',
                                                     borderRadius: '6px',
-                                                    background: '#3b82f6',
-                                                    color: 'white',
+                                                    background: 'hsl(var(--primary))',
+                                                    color: 'hsl(var(--primary-foreground))',
                                                     fontSize: '12px',
                                                     border: 'none',
                                                     cursor: 'pointer',
@@ -417,15 +414,50 @@ const ProjectSelection = ({ user, onSelectProject }) => {
                                             </div>
 
                                             {editingId === project.id ? (
-                                                <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <input
-                                                        type="text"
-                                                        value={editName}
-                                                        onChange={(e) => setEditName(e.target.value)}
-                                                        style={{ background: 'transparent', border: 'none', borderBottom: '1px solid #3b82f6', color: '#fff', fontSize: '16px', width: '100%', outline: 'none' }}
-                                                        autoFocus
-                                                    />
-                                                    <button onClick={saveEdit} style={{ color: '#10b981', border: 'none', background: 'none', cursor: 'pointer' }}><Check size={18} /></button>
+                                                <div onClick={e => e.stopPropagation()} className="edit-mode-container">
+                                                    <div className="edit-field-group">
+                                                        <label className="edit-label">Trip Name</label>
+                                                        <input
+                                                            type="text"
+                                                            value={editName}
+                                                            onChange={(e) => setEditName(e.target.value)}
+                                                            className="edit-input-field"
+                                                            placeholder="Trip Name"
+                                                            autoFocus
+                                                        />
+                                                    </div>
+
+                                                    <div className="edit-field-group">
+                                                        <label className="edit-label">Trip Schedule</label>
+                                                        <div className="edit-date-range">
+                                                            <div className="date-input-wrapper">
+                                                                <input
+                                                                    type="date"
+                                                                    value={editStartDate}
+                                                                    onChange={(e) => setEditStartDate(e.target.value)}
+                                                                    className="edit-date-input"
+                                                                />
+                                                            </div>
+                                                            <span className="date-separator">—</span>
+                                                            <div className="date-input-wrapper">
+                                                                <input
+                                                                    type="date"
+                                                                    value={editEndDate}
+                                                                    onChange={(e) => setEditEndDate(e.target.value)}
+                                                                    className="edit-date-input"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="edit-actions">
+                                                        <button onClick={cancelEdit} className="btn-edit-cancel" title="Cancel changes">
+                                                            <X size={14} /> Cancel
+                                                        </button>
+                                                        <button onClick={saveEdit} className="btn-edit-save" title="Save changes">
+                                                            <Check size={14} /> Save
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             ) : (
                                                 <h3 className="card-title">
@@ -437,7 +469,7 @@ const ProjectSelection = ({ user, onSelectProject }) => {
                                         <div className="card-footer">
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                 <Calendar size={12} />
-                                                <span>{new Date(project.createdAt).getFullYear()}</span>
+                                                <span>Trip Day(s): {formatDateRange(project.startDate, project.endDate)}</span>
                                             </div>
                                             {project.role === 'viewer' && (
                                                 <span className="legacy-badge" style={{ background: '#3b82f6' }}>VIEWER</span>

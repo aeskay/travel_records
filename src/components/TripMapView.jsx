@@ -328,8 +328,9 @@ const LocationMarker = () => {
                             justifyContent: 'center',
                             width: '34px',
                             height: '34px',
-                            background: '#fff',
-                            color: '#333'
+                            background: 'hsl(var(--card))',
+                            color: 'hsl(var(--foreground))',
+                            border: '1px solid hsl(var(--border) / 0.5)'
                         }}
                     >
                         <Navigation size={18} style={{ fill: position ? '#3b82f6' : 'none' }} />

@@ -101,7 +101,7 @@ const Sidebar = ({
                         </div>
                     )}
                 </div>
-                <button onClick={toggleSidebar} className="btn-icon shrink-0">
+                <button onClick={toggleSidebar} className="btn-icon shrink-0 mobile-shrink">
                     {isCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
                 </button>
             </div>
