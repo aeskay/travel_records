@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useUser } from '../context/UserContext';
 import { User, ArrowRight, Lock, Mail } from 'lucide-react';
+import './LoginScreen.css';
 
 const LoginScreen = () => {
     const [isLogin, setIsLogin] = useState(true);
@@ -29,38 +30,14 @@ const LoginScreen = () => {
     };
 
     return (
-        <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: '100vh',
-            width: '100vw',
-            background: 'hsl(var(--background))',
-            color: 'hsl(var(--foreground))',
-            padding: '2rem'
-        }}>
-            <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '1rem',
-                marginBottom: '2.5rem',
-                textAlign: 'center'
-            }}>
+        <div className="login-container">
+            <div className="login-header">
                 <img
                     src="/ttu-logo.svg"
                     style={{ width: '64px', height: '64px', filter: 'drop-shadow(0 0 12px hsl(var(--primary) / 0.3))' }}
                     alt="TTU Logo"
                 />
-                <h1 style={{
-                    fontSize: '2rem',
-                    fontWeight: 800,
-                    letterSpacing: '-0.025em',
-                    background: 'linear-gradient(to bottom, #fff, #a1a1aa)',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent'
-                }}>
+                <h1 className="login-title">
                     TechMRT Trips Manager
                 </h1>
             </div>

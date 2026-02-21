@@ -1,0 +1,45 @@
+.login-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    width: 100vw;
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    padding: 2rem;
+}
+
+.login-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.0rem;
+    text-align: center;
+}
+
+.login-title {
+    font-size: 2.5rem;
+    font-weight: 800;
+    letter-spacing: -0.025em;
+    color: hsl(var(--foreground));
+    text-align: center;
+    line-height: 1.1;
+    max-width: 90vw;
+}
+
+/* Dark theme specific gradient enhancement */
+[data-theme="dark"] .login-title {
+    background: linear-gradient(to bottom, #fff, #a1a1aa);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+@media (max-width: 640px) {
+    .login-title {
+        font-size: 1.75rem;
+        padding: 0 1rem;
+    }
+}
