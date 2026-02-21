@@ -87,7 +87,7 @@ const Sidebar = ({
                         onClick={() => onSelectSection(null)}
                         title="Go to Dashboard"
                     >
-                        <img src="/favicon.svg" style={{ width: '24px', height: '24px' }} alt="TTU Logo" />
+                        <img src="/ttu-logo.svg" style={{ width: '24px', height: '24px' }} alt="TTU Logo" />
                         TechMRT Trip Records
                     </h2>
                     {projectName && (

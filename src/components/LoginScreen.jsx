@@ -49,7 +49,7 @@ const LoginScreen = () => {
                 textAlign: 'center'
             }}>
                 <img
-                    src="/favicon.svg"
+                    src="/ttu-logo.svg"
                     style={{ width: '64px', height: '64px', filter: 'drop-shadow(0 0 12px hsl(var(--primary) / 0.3))' }}
                     alt="TTU Logo"
                 />

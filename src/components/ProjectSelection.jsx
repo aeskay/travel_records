@@ -204,7 +204,7 @@ const ProjectSelection = ({ user, onSelectProject }) => {
                 <div className="dashboard-sidebar">
                     <div className="user-greeting">
                         <div className="flex items-center gap-3 mb-2">
-                            <img src="/favicon.svg" style={{ width: '28px', height: '28px' }} alt="TTU Logo" />
+                            <img src="/ttu-logo.svg" style={{ width: '28px', height: '28px' }} alt="TTU Logo" />
                             <h1 style={{ margin: 0 }}>TechMRT Trips</h1>
                         </div>
                         <p>Welcome back, {(user.username || 'Traveler').split('@')[0]}</p>

@@ -220,7 +220,7 @@ function AppContent() {
                 setCurrentView('dashboard');
               }}
             >
-              <img src="/favicon.svg" style={{ width: '24px', height: '24px' }} alt="TTU Logo" />
+              <img src="/ttu-logo.svg" style={{ width: '24px', height: '24px' }} alt="TTU Logo" />
               TechMRT Trip Records
             </span>
           </div>
