@@ -3,9 +3,11 @@ import { Upload, AlertTriangle, X, Check, GitMerge } from 'lucide-react';
 import { parseCSV, analyzeImport } from '../utils/csvImporter';
 import { addSections } from '../db';
 import { useUser } from '../context/UserContext';
+import { useNotification } from '../context/NotificationContext';
 
 const ImportModal = ({ onClose, onImportComplete, projectId }) => {
     const { user } = useUser();
+    const { showAlert } = useNotification();
     const [report, setReport] = useState(null);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [toggledDuplicates, setToggledDuplicates] = useState(new Set());
@@ -46,7 +48,7 @@ const ImportModal = ({ onClose, onImportComplete, projectId }) => {
             setReport(analysis);
         } catch (err) {
             console.error(err);
-            alert('Error parsing CSV');
+            showAlert('Error parsing CSV');
         } finally {
             setIsAnalyzing(false);
         }
@@ -90,7 +92,7 @@ const ImportModal = ({ onClose, onImportComplete, projectId }) => {
             onImportComplete();
         } catch (err) {
             console.error("Import error details:", err);
-            alert("Import failed: " + err.message);
+            showAlert("Import failed: " + err.message);
         }
     };
 

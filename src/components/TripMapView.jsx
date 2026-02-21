@@ -8,6 +8,7 @@ import autoTable from 'jspdf-autotable';
 import 'leaflet/dist/leaflet.css';
 import { saveSharedDaysPlan, getSharedDaysPlan, updateProject } from '../db';
 import { exportToExcel } from '../utils/exportUtils';
+import { useNotification } from '../context/NotificationContext';
 
 // --- Constants ---
 const DEFAULT_HOME_POSITION = [33.58703457593024, -101.87436165377096];
@@ -344,6 +345,7 @@ const LocationMarker = () => {
 // --- Main Component ---
 const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpdateSection, onUpdateSections, onRemoveFromRoute, username, isAdmin, projectId, project, onUpdateProject }) => {
     const theme = useTheme();
+    const { showAlert } = useNotification();
     // Use dark tiles for 'dark' and 'medium' themes
     const isDarkTiles = theme === 'dark' || theme === 'medium';
     const allTypes = useMemo(() => [...new Set(sections.map(s => s.type).filter(Boolean))], [sections]);
@@ -389,7 +391,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
         if (!isAdmin || !projectId) return;
         const coords = parseCoords(editHomeCoords);
         if (!coords) {
-            alert("Invalid coordinates format. Use: lat, lng");
+            showAlert("Invalid coordinates format. Use: lat, lng");
             return;
         }
 
@@ -405,7 +407,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
             setIsEditingHome(false);
         } catch (e) {
             console.error("Error saving home location:", e);
-            alert("Failed to save home location.");
+            showAlert("Failed to save home location.");
         } finally {
             setSavingHome(false);
         }
@@ -417,7 +419,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
             setEditHomeCoords(coords);
         }, err => {
             console.error(err);
-            alert("Could not get location.");
+            showAlert("Could not get location.");
         });
     };
 
@@ -452,7 +454,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
             );
 
             if (allAssignedSections.length === 0) {
-                alert("No stops assigned to any days.");
+                showAlert("No stops assigned to any days.");
                 return;
             }
 
@@ -583,7 +585,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
 
         } catch (error) {
             console.error("Global Optimize failed:", error);
-            alert(`Global Optimization failed: ${error.message}`);
+            showAlert(`Global Optimization failed: ${error.message}`);
         } finally {
             setIsGlobalOptimizing(false);
         }
@@ -599,7 +601,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
             const sectionsToRevert = sections.filter(s => s.original_day && s.original_sequence);
 
             if (sectionsToRevert.length === 0) {
-                alert("No snapshot found to revert.");
+                showAlert("No snapshot found to revert.");
                 return;
             }
 
@@ -723,7 +725,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
 
         } catch (error) {
             console.error("Optimization failed:", error);
-            alert(`Failed to optimize route: ${error.message}`);
+            showAlert(`Failed to optimize route: ${error.message}`);
         } finally {
             setOptimizingDay(null);
         }
@@ -1017,7 +1019,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
             setShowSequenceManager(false);
         } catch (err) {
             console.error("Failed to save sequence:", err);
-            alert("Error saving sequence changes.");
+            showAlert("Error saving sequence changes.");
         } finally {
             setIsSavingSequence(false);
         }

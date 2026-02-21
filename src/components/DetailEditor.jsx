@@ -4,10 +4,12 @@ import { History, Save, Edit3, Camera, Mic, X, Image as LucideImage, Square, Tra
 import ImageResizer from './ImageResizer';
 import ImageLightbox from './ImageLightbox';
 import { useUser } from '../context/UserContext';
+import { useNotification } from '../context/NotificationContext';
 import { useVoiceLogger } from '../hooks/useVoiceLogger';
 
 const DetailEditor = ({ section, onUpdate }) => {
     const { user } = useUser();
+    const { showAlert } = useNotification();
     const [details, setDetails] = useState([]);
     const [isSaving, setIsSaving] = useState(false);
     const [editingId, setEditingId] = useState(null); // ID of detail being edited
@@ -105,7 +107,7 @@ const DetailEditor = ({ section, onUpdate }) => {
                 };
             } catch (err) {
                 console.error("Failed to stop recording:", err);
-                alert("Recording failed to stop properly.");
+                showAlert("Recording failed to stop properly.");
             }
         } else {
             startRecording();
@@ -287,7 +289,7 @@ const DetailEditor = ({ section, onUpdate }) => {
         } catch (err) {
             console.error("Error saving note:", err);
             // Optionally update the temp item to show error state, but for now we trust retry or user awareness
-            alert("Failed to save note: " + err.message);
+            showAlert("Failed to save note: " + err.message);
         } finally {
             setIsSaving(false);
         }
@@ -486,7 +488,7 @@ const HistoryItem = ({ detail, isEditing, transcribeAudio, modelProgress, onEdit
         const doc = parser.parseFromString(detail.content, 'text/html');
         const audioEl = doc.querySelector('audio');
         if (!audioEl || !audioEl.src) {
-            alert("No audio source found in this note.");
+            showAlert("No audio source found in this note.");
             return;
         }
 
@@ -523,7 +525,7 @@ const HistoryItem = ({ detail, isEditing, transcribeAudio, modelProgress, onEdit
             await onEditSave(newContent);
         } catch (err) {
             console.error("Manual transcription failed:", err);
-            alert("Transcription failed: " + err.message);
+            showAlert("Transcription failed: " + err.message);
         } finally {
             setIsTranscribing(false);
         }

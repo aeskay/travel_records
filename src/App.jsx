@@ -13,11 +13,13 @@ import ProjectSelection from './components/ProjectSelection';
 import { getSections, addSections, addSection, deleteSection, getProject } from './db';
 import { parseCSV } from './utils/csvImporter';
 import { UserProvider, useUser } from './context/UserContext';
+import { NotificationProvider, useNotification } from './context/NotificationContext';
 import './index.css';
 import './styles/App.css';
 
 function AppContent() {
   const { user, loading } = useUser();
+  const { showToast } = useNotification();
   const [sections, setSections] = useState([]);
   const [selectedSection, setSelectedSection] = useState(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -26,8 +28,31 @@ function AppContent() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(window.innerWidth < 768);
   const [editingSection, setEditingSection] = useState(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [lastBackPress, setLastBackPress] = useState(0);
   const [currentProject, setCurrentProject] = useState(null);
   const [currentView, setCurrentView] = useState('dashboard');
+
+  useEffect(() => {
+    // Intercept Back Button for Mobile
+    window.history.pushState(null, null, window.location.pathname);
+
+    const handlePopState = (event) => {
+      const now = Date.now();
+      if (now - lastBackPress < 2000) {
+        // If pressed twice within 2 seconds, let the browser handle it (usually goes back)
+        // or we could potentially do window.close() if allowed
+        window.history.back();
+      } else {
+        // Prevent going back
+        window.history.pushState(null, null, window.location.pathname);
+        setLastBackPress(now);
+        showToast("Press back again to close app");
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [lastBackPress, showToast]);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -123,9 +148,11 @@ function AppContent() {
     loadSections();
   };
 
+  const { showAlert } = useNotification();
+
   const handleDeleteSection = async (section) => {
     if (!isAdmin) {
-      alert("Only administrators can delete sections.");
+      showAlert("Only administrators can delete sections.");
       return;
     }
     await deleteSection(section.docId, user.username);
@@ -327,9 +354,11 @@ function AppContent() {
 
 function App() {
   return (
-    <UserProvider>
-      <AppContent />
-    </UserProvider>
+    <NotificationProvider>
+      <UserProvider>
+        <AppContent />
+      </UserProvider>
+    </NotificationProvider>
   );
 }
 

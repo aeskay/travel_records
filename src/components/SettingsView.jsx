@@ -1,10 +1,12 @@
 import { useState, useRef } from 'react';
 import { useUser } from '../context/UserContext';
+import { useNotification } from '../context/NotificationContext';
 import { getAllData, restoreData, manageProjectUsers, getProjectData, restoreProjectData } from '../db';
 import { Moon, Sun, Sunset, Download, Upload, LogOut, User, Edit2, Save, Trash2, X, Plus, Wrench, Loader } from 'lucide-react';
 
 const SettingsView = ({ onClose, isAdmin, currentProject, onProjectUpdate }) => {
     const { user, logout, updateUserProfile, deleteUserAccount } = useUser();
+    const { showAlert } = useNotification();
     const [theme, setTheme] = useState(document.documentElement.getAttribute('data-theme') || 'light');
 
     const fileInputRef = useRef(null);
@@ -32,7 +34,7 @@ const SettingsView = ({ onClose, isAdmin, currentProject, onProjectUpdate }) => 
     const handleBackup = async () => {
         try {
             if (!currentProject?.id) {
-                alert("No active trip to backup.");
+                showAlert("No active trip to backup.");
                 return;
             }
             const data = await getProjectData(currentProject.id);
@@ -47,7 +49,7 @@ const SettingsView = ({ onClose, isAdmin, currentProject, onProjectUpdate }) => 
             URL.revokeObjectURL(url);
         } catch (err) {
             console.error("Backup failed", err);
-            alert("Backup failed: " + err.message);
+            showAlert("Backup failed: " + err.message);
         }
     };
 
@@ -66,11 +68,11 @@ const SettingsView = ({ onClose, isAdmin, currentProject, onProjectUpdate }) => 
                 try {
                     const data = JSON.parse(event.target.result);
                     const result = await restoreProjectData(data, currentProject.id, user.username);
-                    alert(`Restored ${result.count} sections successfully. Reloading...`);
+                    showAlert(`Restored ${result.count} sections successfully. Reloading...`);
                     window.location.reload();
                 } catch (err) {
                     console.error("Restore failed", err);
-                    alert("Restore failed: " + err.message);
+                    showAlert("Restore failed: " + err.message);
                 }
             };
             reader.readAsText(file);
@@ -80,16 +82,16 @@ const SettingsView = ({ onClose, isAdmin, currentProject, onProjectUpdate }) => 
 
     const handleSaveProfile = async () => {
         if (!profileData.username.trim()) {
-            alert("Username cannot be empty");
+            showAlert("Username cannot be empty");
             return;
         }
         try {
             await updateUserProfile(profileData.username);
             setIsEditingProfile(false);
-            alert("Profile updated successfully");
+            showAlert("Profile updated successfully");
         } catch (err) {
             console.error("Profile update failed", err);
-            alert("Failed to update profile: " + err.message);
+            showAlert("Failed to update profile: " + err.message);
         }
     };
 
@@ -107,10 +109,10 @@ const SettingsView = ({ onClose, isAdmin, currentProject, onProjectUpdate }) => 
             if (confirm("FINAL WARNING: Type your username to confirm: " + user.username)) {
                 try {
                     await deleteUserAccount();
-                    alert("Account deleted successfully");
+                    showAlert("Account deleted successfully");
                 } catch (err) {
                     console.error("Account deletion failed", err);
-                    alert("Failed to delete account: " + err.message);
+                    showAlert("Failed to delete account: " + err.message);
                 }
             }
         }
@@ -124,7 +126,7 @@ const SettingsView = ({ onClose, isAdmin, currentProject, onProjectUpdate }) => 
             if (action === 'add') setInviteEmail('');
         } catch (err) {
             console.error("User management error:", err);
-            alert("Failed: " + err.message);
+            showAlert("Failed: " + err.message);
         }
     };
 

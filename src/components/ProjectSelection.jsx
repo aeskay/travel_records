@@ -3,9 +3,11 @@ import React, { useState, useEffect } from 'react';
 import { getProjects, createProject, deleteProject, updateProject, duplicateProject } from '../db';
 import { useUser } from '../context/UserContext';
 import { Plus, FolderOpen, Loader, Trash2, Edit2, Map, Calendar, X, Check, Wrench, User, Mail, Moon, Sun, Sunset, LogOut, Copy } from 'lucide-react';
+import { useNotification } from '../context/NotificationContext';
 import './ProjectSelection.css';
 
 const ProjectSelection = ({ user, onSelectProject }) => {
+    const { showAlert } = useNotification();
     const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
     const [newProjectName, setNewProjectName] = useState('');
@@ -99,11 +101,11 @@ const ProjectSelection = ({ user, onSelectProject }) => {
         setLoading(true);
         try {
             await duplicateProject(projectId, newName, user.username);
-            alert("Trip duplicated successfully!");
+            showAlert("Trip duplicated successfully!");
             await fetchProjects();
         } catch (err) {
             console.error("Error duplicating trip:", err);
-            alert(`Duplicate failed: ${err.message}`);
+            showAlert(`Duplicate failed: ${err.message}`);
         } finally {
             setLoading(false);
         }
@@ -163,10 +165,10 @@ const ProjectSelection = ({ user, onSelectProject }) => {
         e.preventDefault();
         try {
             await updateUserProfile(editDisplayName);
-            alert("Profile updated successfully!");
+            showAlert("Profile updated successfully!");
         } catch (error) {
             console.error("Failed to update profile:", error);
-            alert("Failed to update profile");
+            showAlert("Failed to update profile");
         }
     };
 
