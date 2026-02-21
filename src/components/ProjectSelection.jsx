@@ -7,7 +7,7 @@ import { useNotification } from '../context/NotificationContext';
 import './ProjectSelection.css';
 
 const ProjectSelection = ({ user, onSelectProject }) => {
-    const { showAlert } = useNotification();
+    const { showAlert, showConfirm, showPrompt } = useNotification();
     const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
     const [newProjectName, setNewProjectName] = useState('');
@@ -80,7 +80,7 @@ const ProjectSelection = ({ user, onSelectProject }) => {
 
     const handleDelete = async (e, projectId) => {
         e.stopPropagation();
-        if (window.confirm("Are you sure you want to delete this trip? This will delete all sections associated with it.")) {
+        if (await showConfirm("Are you sure you want to delete this trip? This will delete all sections associated with it.")) {
             try {
                 await deleteProject(projectId, user.username);
                 await fetchProjects();
@@ -95,7 +95,7 @@ const ProjectSelection = ({ user, onSelectProject }) => {
 
     const handleDuplicate = async (e, projectId, projectName) => {
         e.stopPropagation();
-        const newName = prompt(`Enter name for copy of "${projectName}":`, `${projectName} (Copy)`);
+        const newName = await showPrompt(`Enter name for copy of "${projectName}":`, `${projectName} (Copy)`);
         if (!newName) return;
 
         setLoading(true);

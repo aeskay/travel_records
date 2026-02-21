@@ -9,22 +9,55 @@ export const NotificationProvider = ({ children }) => {
 
     const showAlert = useCallback((message, type = 'info') => {
         return new Promise((resolve) => {
-            setAlert({ message, type, resolve });
+            setAlert({ message, type, mode: 'alert', resolve });
         });
     }, []);
 
-    const closeAlert = useCallback(() => {
-        if (alert?.resolve) alert.resolve();
-        setAlert(null);
-    }, [alert]);
+    const showConfirm = useCallback((message) => {
+        return new Promise((resolve) => {
+            setAlert({ message, mode: 'confirm', resolve });
+        });
+    }, []);
+
+    const showPrompt = useCallback((message, defaultValue = '') => {
+        return new Promise((resolve) => {
+            setAlert({ message, mode: 'prompt', defaultValue, resolve });
+        });
+    }, []);
 
     const showToast = useCallback((message, duration = 3000) => {
         setToast({ message });
         setTimeout(() => setToast(null), duration);
     }, []);
 
+    const closeAlert = useCallback((result) => {
+        if (alert?.resolve) {
+            // If it's a prompt, we need the input value
+            if (alert.mode === 'prompt' && result === true) {
+                const input = document.getElementById('notification-prompt-input');
+                alert.resolve(input ? input.value : null);
+            } else {
+                alert.resolve(result);
+            }
+        }
+        setAlert(null);
+    }, [alert]);
+
+    // Handle Enter key for prompt
+    useEffect(() => {
+        if (alert?.mode === 'prompt') {
+            const handleKeyDown = (e) => {
+                if (e.key === 'Enter') {
+                    closeAlert(true);
+                }
+            };
+            window.addEventListener('keydown', handleKeyDown);
+            return () => window.removeEventListener('keydown', handleKeyDown);
+        }
+    }, [alert?.mode, closeAlert]);
+
     return (
-        <NotificationContext.Provider value={{ showAlert, showToast }}>
+        <NotificationContext.Provider value={{ showAlert, showConfirm, showPrompt, showToast }}>
             {children}
             {alert && (
                 <div className="modal-overlay" style={{ zIndex: 9999 }}>
@@ -36,10 +69,25 @@ export const NotificationProvider = ({ children }) => {
                             </h2>
                         </div>
                         <div className="modal-body">
-                            <p style={{ fontSize: '1rem', lineHeight: '1.5' }}>{alert.message}</p>
+                            <p style={{ fontSize: '1rem', lineHeight: '1.5', marginBottom: alert.mode === 'prompt' ? '1rem' : '0' }}>{alert.message}</p>
+                            {alert.mode === 'prompt' && (
+                                <input
+                                    id="notification-prompt-input"
+                                    type="text"
+                                    className="input"
+                                    autoFocus
+                                    defaultValue={alert.defaultValue}
+                                    style={{ width: '100%' }}
+                                />
+                            )}
                         </div>
-                        <div className="modal-footer">
-                            <button className="btn btn-primary" onClick={closeAlert}>OK</button>
+                        <div className="modal-footer" style={{ gap: '12px' }}>
+                            {(alert.mode === 'confirm' || alert.mode === 'prompt') && (
+                                <button className="btn btn-outline" onClick={() => closeAlert(alert.mode === 'confirm' ? false : null)}>Cancel</button>
+                            )}
+                            <button className="btn btn-primary" onClick={() => closeAlert(true)}>
+                                {alert.mode === 'confirm' ? 'Yes' : 'OK'}
+                            </button>
                         </div>
                     </div>
                 </div>

@@ -6,7 +6,7 @@ import { Moon, Sun, Sunset, Download, Upload, LogOut, User, Edit2, Save, Trash2,
 
 const SettingsView = ({ onClose, isAdmin, currentProject, onProjectUpdate }) => {
     const { user, logout, updateUserProfile, deleteUserAccount } = useUser();
-    const { showAlert } = useNotification();
+    const { showAlert, showConfirm } = useNotification();
     const [theme, setTheme] = useState(document.documentElement.getAttribute('data-theme') || 'light');
 
     const fileInputRef = useRef(null);
@@ -58,11 +58,11 @@ const SettingsView = ({ onClose, isAdmin, currentProject, onProjectUpdate }) => 
         if (!file) return;
 
         if (!currentProject?.id) {
-            alert("No active trip to restore to.");
+            showAlert("No active trip to restore to.");
             return;
         }
 
-        if (confirm(`WARNING: This will overwrite data for the trip "${currentProject.name}". Are you sure?`)) {
+        if (await showConfirm(`WARNING: This will overwrite data for the trip "${currentProject.name}". Are you sure?`)) {
             const reader = new FileReader();
             reader.onload = async (event) => {
                 try {
@@ -105,8 +105,8 @@ const SettingsView = ({ onClose, isAdmin, currentProject, onProjectUpdate }) => 
     };
 
     const handleDeleteAccount = async () => {
-        if (confirm("WARNING: This will permanently delete your account and all associated data. This action cannot be undone. Are you absolutely sure?")) {
-            if (confirm("FINAL WARNING: Type your username to confirm: " + user.username)) {
+        if (await showConfirm("WARNING: This will permanently delete your account and all associated data. This action cannot be undone. Are you absolutely sure?")) {
+            if (await showConfirm("FINAL WARNING: This is irreversible. Are you sure you want to delete your account?")) {
                 try {
                     await deleteUserAccount();
                     showAlert("Account deleted successfully");

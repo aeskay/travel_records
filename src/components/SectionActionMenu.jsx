@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
+import { useNotification } from '../context/NotificationContext';
 import { MoreVertical, CheckCircle, Circle, Edit2, Trash2, Tag, MapPinned } from 'lucide-react';
 
 const SectionActionMenu = ({ section, allTypes = [], onChangeStatus, onChangeType, onDelete, onEdit, onViewOnMap, isAdmin }) => {
+    const { showConfirm } = useNotification();
     const [open, setOpen] = useState(false);
     const [showTypeSubmenu, setShowTypeSubmenu] = useState(false);
     const [newType, setNewType] = useState('');
@@ -42,8 +44,8 @@ const SectionActionMenu = ({ section, allTypes = [], onChangeStatus, onChangeTyp
         }
     };
 
-    const handleDelete = () => {
-        if (confirm(`Are you sure you want to delete section "${section.id}"? This cannot be undone.`)) {
+    const handleDelete = async () => {
+        if (await showConfirm(`Are you sure you want to delete section "${section.id}"? This cannot be undone.`)) {
             onDelete(section);
             setOpen(false);
         }

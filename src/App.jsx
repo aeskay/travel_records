@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Menu } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import SectionDetail from './components/SectionDetail';
@@ -28,31 +28,47 @@ function AppContent() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(window.innerWidth < 768);
   const [editingSection, setEditingSection] = useState(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [lastBackPress, setLastBackPress] = useState(0);
-  const [currentProject, setCurrentProject] = useState(null);
   const [currentView, setCurrentView] = useState('dashboard');
+  const [currentProject, setCurrentProject] = useState(null);
+  const lastBackPressRef = useRef(0);
+
+  // Sync state with history for back button handling
+  useEffect(() => {
+    // When view or selection changes, push to history
+    const state = { view: currentView, sectionId: selectedSection?.docId };
+    window.history.pushState(state, null, "");
+  }, [currentView, selectedSection?.docId]);
 
   useEffect(() => {
-    // Intercept Back Button for Mobile
-    window.history.pushState(null, null, window.location.pathname);
-
     const handlePopState = (event) => {
+      // If we have state in the event, try to navigate back internally
+      if (selectedSection) {
+        setSelectedSection(null);
+        setCurrentView('dashboard');
+        return;
+      }
+
+      if (currentView !== 'dashboard') {
+        setCurrentView('dashboard');
+        return;
+      }
+
+      // If we are already at dashboard and no selection, handle exit warning
       const now = Date.now();
-      if (now - lastBackPress < 2000) {
-        // If pressed twice within 2 seconds, let the browser handle it (usually goes back)
-        // or we could potentially do window.close() if allowed
+      if (now - lastBackPressRef.current < 2000) {
+        // Exit app (let browser handle it)
         window.history.back();
       } else {
-        // Prevent going back
-        window.history.pushState(null, null, window.location.pathname);
-        setLastBackPress(now);
+        // Prevent default back (which would exit SPA)
+        window.history.pushState(null, null, "");
+        lastBackPressRef.current = now;
         showToast("Press back again to close app");
       }
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [lastBackPress, showToast]);
+  }, [currentView, selectedSection, showToast]);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);

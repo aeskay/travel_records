@@ -9,7 +9,7 @@ import { useVoiceLogger } from '../hooks/useVoiceLogger';
 
 const DetailEditor = ({ section, onUpdate }) => {
     const { user } = useUser();
-    const { showAlert } = useNotification();
+    const { showAlert, showConfirm } = useNotification();
     const [details, setDetails] = useState([]);
     const [isSaving, setIsSaving] = useState(false);
     const [editingId, setEditingId] = useState(null); // ID of detail being edited
@@ -296,7 +296,7 @@ const DetailEditor = ({ section, onUpdate }) => {
     };
 
     const handleDelete = async (id) => {
-        if (confirm("Are you sure you want to delete this note?")) {
+        if (await showConfirm("Are you sure you want to delete this note?")) {
             await deleteDetail(id, user.username);
             // Update parent section timestamp
             await addSection({

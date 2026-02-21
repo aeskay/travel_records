@@ -5,8 +5,9 @@ import { getDetails } from '../db';
  * Export sections and their details to an Excel file.
  * @param {Array} sections - List of section objects
  * @param {string} username - Current username for fetching details
+ * @param {Function} showAlert - Optional callback for showing alerts
  */
-export const exportToExcel = async (sections, username) => {
+export const exportToExcel = async (sections, username, showAlert) => {
     console.log("Starting Excel export for", sections.length, "sections");
     try {
         // Ensure sections is always an array
@@ -95,6 +96,10 @@ export const exportToExcel = async (sections, username) => {
 
     } catch (error) {
         console.error("Export failed:", error);
-        alert("Export failed. See console for details.");
+        if (showAlert) {
+            showAlert("Export failed. See console for details.", "error");
+        } else {
+            alert("Export failed. See console for details.");
+        }
     }
 };

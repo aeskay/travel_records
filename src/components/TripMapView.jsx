@@ -345,7 +345,7 @@ const LocationMarker = () => {
 // --- Main Component ---
 const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpdateSection, onUpdateSections, onRemoveFromRoute, username, isAdmin, projectId, project, onUpdateProject }) => {
     const theme = useTheme();
-    const { showAlert } = useNotification();
+    const { showAlert, showConfirm } = useNotification();
     // Use dark tiles for 'dark' and 'medium' themes
     const isDarkTiles = theme === 'dark' || theme === 'medium';
     const allTypes = useMemo(() => [...new Set(sections.map(s => s.type).filter(Boolean))], [sections]);
@@ -442,7 +442,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
     const handleGlobalOptimize = async () => {
         if (!isAdmin || !onUpdateSections) return;
 
-        if (!window.confirm("Global Optimization will reorganize ALL stops across ALL days to balance travel time. Proceed?")) {
+        if (!await showConfirm("Global Optimization will reorganize ALL stops across ALL days to balance travel time. Proceed?")) {
             return;
         }
 
@@ -593,7 +593,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
 
     const handleGlobalRevert = async () => {
         if (!isAdmin || !onUpdateSections) return;
-        if (!window.confirm("Revert ALL stops to their original days and sequences?")) return;
+        if (!await showConfirm("Revert ALL stops to their original days and sequences?")) return;
 
         setIsGlobalOptimizing(true);
         try {
@@ -1385,7 +1385,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                                 onClick={() => {
                                     // Export the ordered sections that are part of the route
                                     const sectionsToExport = orderedRouteSections.length > 0 ? orderedRouteSections : sections;
-                                    exportToExcel(sectionsToExport, username);
+                                    exportToExcel(sectionsToExport, username, showAlert);
                                     setShowExportMenu(false);
                                 }}
                                 className="btn btn-ghost justify-start text-xs px-2 py-2 h-auto text-left"
