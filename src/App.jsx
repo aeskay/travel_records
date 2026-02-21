@@ -214,12 +214,13 @@ function AppContent() {
               <Menu size={24} />
             </button>
             <span
-              className="font-bold text-lg cursor-pointer"
+              className="font-bold text-lg cursor-pointer flex items-center gap-2"
               onClick={() => {
                 setSelectedSection(null);
                 setCurrentView('dashboard');
               }}
             >
+              <img src="/favicon.svg" style={{ width: '24px', height: '24px' }} alt="TTU Logo" />
               TechMRT Trip Records
             </span>
           </div>

@@ -37,8 +37,34 @@ const LoginScreen = () => {
             height: '100vh',
             width: '100vw',
             background: 'hsl(var(--background))',
-            color: 'hsl(var(--foreground))'
+            color: 'hsl(var(--foreground))',
+            padding: '2rem'
         }}>
+            <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '1rem',
+                marginBottom: '2.5rem',
+                textAlign: 'center'
+            }}>
+                <img
+                    src="/favicon.svg"
+                    style={{ width: '64px', height: '64px', filter: 'drop-shadow(0 0 12px hsl(var(--primary) / 0.3))' }}
+                    alt="TTU Logo"
+                />
+                <h1 style={{
+                    fontSize: '2rem',
+                    fontWeight: 800,
+                    letterSpacing: '-0.025em',
+                    background: 'linear-gradient(to bottom, #fff, #a1a1aa)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent'
+                }}>
+                    TechMRT Trips Manager
+                </h1>
+            </div>
+
             <div className="card" style={{ padding: '3rem', width: '100%', maxWidth: '400px', textAlign: 'center' }}>
                 <div style={{
                     width: '80px', height: '80px',

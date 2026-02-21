@@ -203,7 +203,10 @@ const ProjectSelection = ({ user, onSelectProject }) => {
                 {/* Left Sidebar */}
                 <div className="dashboard-sidebar">
                     <div className="user-greeting">
-                        <h1>TechMRT Trips</h1>
+                        <div className="flex items-center gap-3 mb-2">
+                            <img src="/favicon.svg" style={{ width: '28px', height: '28px' }} alt="TTU Logo" />
+                            <h1 style={{ margin: 0 }}>TechMRT Trips</h1>
+                        </div>
                         <p>Welcome back, {(user.username || 'Traveler').split('@')[0]}</p>
                     </div>
 
@@ -228,7 +231,7 @@ const ProjectSelection = ({ user, onSelectProject }) => {
                             className={`sidebar-btn ${activeTab === 'settings' ? 'active' : ''}`}
                         >
                             <Wrench size={18} />
-                            Settings & Profile
+                            Settings
                         </button>
                     </div>
 

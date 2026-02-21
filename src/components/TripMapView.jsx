@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
-import { ArrowLeft, MapPin, Navigation, CheckCircle, Clock, ExternalLink, Building2, Route, Home, Hash, Trash2, Save, Landmark, Calendar, Plus, X, ChevronDown, ChevronUp, Eye, EyeOff, Printer, Download, FileSpreadsheet, Zap, RotateCcw } from 'lucide-react';
+import { ArrowLeft, MapPin, Navigation, CheckCircle, Clock, ExternalLink, Building2, Route, Home, Hash, Trash2, Save, Landmark, Calendar, Plus, X, ChevronDown, ChevronUp, Eye, EyeOff, Printer, Download, FileSpreadsheet, Zap, RotateCcw, ListOrdered, ArrowDown } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -971,6 +971,86 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
             .sort((a, b) => Number(a.test_sequence) - Number(b.test_sequence));
     }, [mappableSections]);
 
+    // Sequence Manager State
+    const [showSequenceManager, setShowSequenceManager] = useState(false);
+    const [sequenceList, setSequenceList] = useState([]); // Array of sections for reordering
+    const [isSavingSequence, setIsSavingSequence] = useState(false);
+    const [draggedItemIndex, setDraggedItemIndex] = useState(null);
+
+    // Initialize sequence list when opening panel
+    useEffect(() => {
+        if (showSequenceManager) {
+            setSequenceList([...orderedRouteSections]);
+        }
+    }, [showSequenceManager, orderedRouteSections]);
+
+    const handleFixDown = (index) => {
+        const newList = [...sequenceList];
+        const startSeq = Number(newList[index].test_sequence);
+        if (isNaN(startSeq)) return;
+
+        for (let i = index + 1; i < newList.length; i++) {
+            newList[i] = { ...newList[i], test_sequence: String(startSeq + (i - index)) };
+        }
+        setSequenceList(newList);
+    };
+
+    const handleSaveSequence = async () => {
+        if (!isAdmin || !onUpdateSections) return;
+        setIsSavingSequence(true);
+        try {
+            // Find which sections actually changed
+            const updates = [];
+            sequenceList.forEach((sec) => {
+                const original = sections.find(s => s.docId === sec.docId);
+                if (original && original.test_sequence !== sec.test_sequence) {
+                    const update = { ...sec };
+                    delete update.latLng; // Cleanup
+                    updates.push(update);
+                }
+            });
+
+            if (updates.length > 0) {
+                await onUpdateSections(updates);
+            }
+            setShowSequenceManager(false);
+        } catch (err) {
+            console.error("Failed to save sequence:", err);
+            alert("Error saving sequence changes.");
+        } finally {
+            setIsSavingSequence(false);
+        }
+    };
+
+    // Drag and Drop Logic
+    const onDragStart = (e, index) => {
+        setDraggedItemIndex(index);
+        e.dataTransfer.effectAllowed = "move";
+    };
+    const onDragOver = (e, index) => {
+        e.preventDefault();
+        if (draggedItemIndex === null || draggedItemIndex === index) return;
+
+        const newList = [...sequenceList];
+        const item = newList.splice(draggedItemIndex, 1)[0];
+        newList.splice(index, 0, item);
+
+        setDraggedItemIndex(index);
+        setSequenceList(newList);
+    };
+
+    const handleRenumberAll = () => {
+        const resequenced = sequenceList.map((it, idx) => ({
+            ...it,
+            test_sequence: String(idx + 1)
+        }));
+        setSequenceList(resequenced);
+    };
+
+    const onDragEnd = () => {
+        setDraggedItemIndex(null);
+    };
+
     const routeWaypoints = useMemo(() => {
         if (orderedRouteSections.length === 0) return [];
         // Home → stops → Home
@@ -1313,6 +1393,15 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                     )}
                 </div>
                 <button
+                    onClick={() => setShowSequenceManager(!showSequenceManager)}
+                    className={`btn btn-ghost ${showSequenceManager ? 'bg-accent' : ''}`}
+                    style={{ gap: '8px' }}
+                    title="Sequence Manager"
+                >
+                    <ListOrdered size={18} />
+                    <span className="hidden md:inline">Sequence</span>
+                </button>
+                <button
                     onClick={() => setShowDaysPlan(!showDaysPlan)}
                     className={`btn btn-ghost ${showDaysPlan ? 'bg-accent' : ''}`}
                     style={{ gap: '8px' }}
@@ -1321,6 +1410,87 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                     <span className="hidden md:inline">Days Plan</span>
                 </button>
             </div>
+
+            {/* Sequence Manager Panel */}
+            {showSequenceManager && (
+                <div className="days-plan-panel sequence-manager-panel">
+                    <div className="days-plan-header">
+                        <div className="flex items-center gap-2">
+                            <ListOrdered size={18} />
+                            <h3>Sequence Manager</h3>
+                        </div>
+                        <button onClick={() => setShowSequenceManager(false)} className="btn-icon">
+                            <X size={16} />
+                        </button>
+                    </div>
+
+                    <div className="days-plan-content">
+                        <div className="text-xs text-muted mb-4 p-2 bg-accent/30 rounded flex items-center justify-between">
+                            <span>Drag to reorder. Numbers stay until you fix/renumber.</span>
+                            <button
+                                className="btn btn-ghost btn-xs text-primary h-auto py-1"
+                                onClick={handleRenumberAll}
+                                title="Reset all to 1, 2, 3..."
+                            >
+                                Renumber 1-N
+                            </button>
+                        </div>
+
+                        <div className="sequence-item-list">
+                            {sequenceList.length === 0 ? (
+                                <div className="text-center py-8 text-muted text-sm">No stops with sequence numbers found.</div>
+                            ) : (
+                                sequenceList.map((sec, index) => (
+                                    <div
+                                        key={sec.docId}
+                                        className={`sequence-mgr-item ${draggedItemIndex === index ? 'dragging' : ''}`}
+                                        draggable
+                                        onDragStart={(e) => onDragStart(e, index)}
+                                        onDragOver={(e) => onDragOver(e, index)}
+                                        onDragEnd={onDragEnd}
+                                    >
+                                        <div className="seq-mgr-drag-handle">
+                                            <div className="seq-mgr-hex">#{sec.test_sequence}</div>
+                                        </div>
+                                        <div className="seq-mgr-info">
+                                            <div className="seq-mgr-id">{sec.id}</div>
+                                            <div className="seq-mgr-meta">{sec.type} • {sec.county}</div>
+                                        </div>
+                                        <button
+                                            className="btn-icon text-primary hover:bg-primary/10"
+                                            onClick={() => handleFixDown(index)}
+                                            title="Fix Down (Auto-increment following)"
+                                        >
+                                            <ArrowDown size={16} />
+                                        </button>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                        <div className="mt-8 flex gap-2">
+                            <button
+                                className="btn btn-primary flex-1 gap-2"
+                                onClick={handleSaveSequence}
+                                disabled={isSavingSequence || sequenceList.length === 0}
+                            >
+                                {isSavingSequence ? (
+                                    <span className="loading loading-spinner loading-xs"></span>
+                                ) : (
+                                    <Save size={16} />
+                                )}
+                                Save Changes
+                            </button>
+                            <button
+                                className="btn btn-outline"
+                                onClick={() => setShowSequenceManager(false)}
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Days Plan Panel */}
             {showDaysPlan && (
@@ -1521,15 +1691,33 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                             click: () => openEditHome()
                         }}
                     >
-                        <Popup>
-                            <strong>{homeName}</strong>
-                            <br />
-                            <span style={{ fontSize: '0.8em', color: '#666' }}>Start & End Point</span>
-                            {isAdmin && (
-                                <div style={{ fontSize: '0.8em', color: '#3b82f6', marginTop: '4px', cursor: 'pointer' }} onClick={openEditHome}>
-                                    Click to Edit
+                        <Popup className="trip-map-popup" maxWidth={300}>
+                            <div className="popup-content">
+                                <div className="popup-header">
+                                    <span className="popup-section-id">{homeName}</span>
                                 </div>
-                            )}
+                                <div className="popup-location">
+                                    <Home size={12} />
+                                    Home Base — Lubbock, TX
+                                </div>
+                                <div className="popup-meta">
+                                    <span className="popup-status pending">
+                                        <Clock size={12} />
+                                        Start & End Point
+                                    </span>
+                                </div>
+                                {isAdmin && (
+                                    <div className="popup-actions" style={{ marginTop: '8px' }}>
+                                        <button
+                                            className="popup-view-btn"
+                                            onClick={openEditHome}
+                                            style={{ width: '100%', justifyContent: 'center' }}
+                                        >
+                                            Edit Home Location
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                         </Popup>
                     </Marker>
 
@@ -1690,14 +1878,10 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                             </div>
                             <div className="legend-item">
                                 <span className="legend-dot" style={{ background: '#f59e0b', boxShadow: '0 0 4px #f59e0b88' }}></span>
-                                <span>Not Evaluated</span>
+                                <span>Pending</span>
                             </div>
                             <div className="legend-item">
-                                <span className="legend-dot" style={{ background: '#3b82f6', boxShadow: '0 0 4px #3b82f688' }}></span>
-                                <span>Selected</span>
-                            </div>
-                            <div className="legend-item">
-                                <span style={{ fontSize: '14px', lineHeight: 1 }}>🏠</span>
+                                <Home size={16} className="text-[hsl(var(--primary))]" />
                                 <span>Home ({homeName})</span>
                             </div>
                             {routeGeometry && (

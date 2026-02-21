@@ -83,10 +83,11 @@ const Sidebar = ({
                 </div>
                 <div className="flex-1 overflow-hidden mr-8">
                     <h2
-                        className="text-lg font-bold cursor-pointer hover:text-primary transition-colors"
+                        className="text-lg font-bold cursor-pointer hover:text-primary transition-colors flex items-center gap-2"
                         onClick={() => onSelectSection(null)}
                         title="Go to Dashboard"
                     >
+                        <img src="/favicon.svg" style={{ width: '24px', height: '24px' }} alt="TTU Logo" />
                         TechMRT Trip Records
                     </h2>
                     {projectName && (
