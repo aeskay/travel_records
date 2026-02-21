@@ -467,9 +467,9 @@ const ProjectSelection = ({ user, onSelectProject }) => {
                                         </div>
 
                                         <div className="card-footer">
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                <Calendar size={12} />
-                                                <span>Trip Day(s): {formatDateRange(project.startDate, project.endDate)}</span>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <Calendar size={14} className="calendar-icon" />
+                                                <span style={{ fontSize: '0.8rem', fontWeight: 500 }}>Trip Day(s): {formatDateRange(project.startDate, project.endDate)}</span>
                                             </div>
                                             {project.role === 'viewer' && (
                                                 <span className="legacy-badge" style={{ background: '#3b82f6' }}>VIEWER</span>

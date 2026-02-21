@@ -37,34 +37,40 @@
   --radius: 0.5rem;
 }
 
-/* Light Theme */
+/* Light Theme - Softened for better comfort */
 [data-theme="light"] {
-  --background: 0 0% 100%;
-  --foreground: 222.2 84% 4.9%;
+  --background: 240 5% 96%;
+  /* Softer Zinc-100/50ish */
+  --foreground: 222.2 47.4% 11.2%;
+  /* Stronger contrast for text */
 
   --card: 0 0% 100%;
-  --card-foreground: 222.2 84% 4.9%;
+  /* Pure white for cards to pop against soft bg */
+  --card-foreground: 222.2 47.4% 11.2%;
 
   --popover: 0 0% 100%;
-  --popover-foreground: 222.2 84% 4.9%;
+  --popover-foreground: 222.2 47.4% 11.2%;
 
   --primary: 217 91% 60%;
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 210 40% 96.1%;
+  --secondary: 210 40% 90%;
+  /* Slightly darker secondary for grouping */
   --secondary-foreground: 222.2 47.4% 11.2%;
 
-  --muted: 210 40% 96.1%;
-  --muted-foreground: 215.4 16.3% 46.9%;
+  --muted: 210 40% 90%;
+  --muted-foreground: 215.4 16.3% 40%;
+  /* Slightly darker muted text */
 
-  --accent: 210 40% 96.1%;
+  --accent: 210 40% 90%;
   --accent-foreground: 222.2 47.4% 11.2%;
 
   --destructive: 0 84.2% 60.2%;
   --destructive-foreground: 210 40% 98%;
 
-  --border: 214.3 31.8% 91.4%;
-  --input: 214.3 31.8% 91.4%;
+  --border: 214.3 31.8% 85%;
+  /* More visible border against off-white */
+  --input: 214.3 31.8% 85%;
   --ring: 217 91% 60%;
 
   --radius: 0.5rem;

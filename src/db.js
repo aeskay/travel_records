@@ -52,10 +52,16 @@ export const getProject = async (projectId) => {
 };
 
 export const createProject = async (name, username) => {
+    const today = new Date();
+    const tomorrow = new Date();
+    tomorrow.setDate(today.getDate() + 1);
+
     const newProject = {
         name,
         createdBy: username,
         createdAt: new Date().toISOString(),
+        startDate: today.toISOString().split('T')[0], // YYYY-MM-DD
+        endDate: tomorrow.toISOString().split('T')[0], // YYYY-MM-DD
         users: [{ email: username, role: 'admin' }] // Creator is always admin
     };
     const docRef = await addDoc(projectsRef, newProject);
@@ -251,130 +257,6 @@ export const deleteDetail = async (id, username) => {
     await deleteDoc(doc(detailsRef, id));
 };
 
-/**
- * Data Repair Utility: Fixes notes orphaned by the duplication bug.
- * Moves notes from "double-prefixed" section IDs (e.g., TripA_TripA_Sec1) 
- * back to their correct single-prefixed ID (e.g., TripA_Sec1).
- */
-export const repairOrphanedNotes = async (projectId) => {
-    if (!projectId) throw new Error("Project ID is required for repair");
-
-    console.log(`[Repair] Starting repair for project: ${projectId}`);
-
-    // 1. Fetch all details for this project
-    const q = query(detailsRef, where('projectId', '==', projectId));
-    const snap = await getDocs(q);
-    const allDetails = snapToData(snap);
-
-    const doublePrefix = `${projectId}_${projectId}_`;
-    const batch = writeBatch(db);
-    let count = 0;
-
-    for (const detail of allDetails) {
-        if (detail.sectionId && detail.sectionId.startsWith(doublePrefix)) {
-            // Correct the sectionId by removing the extra project prefix
-            const correctedSectionId = detail.sectionId.substring(projectId.length + 1);
-
-            console.log(`[Repair] Relinking note ${detail.id}: ${detail.sectionId} -> ${correctedSectionId}`);
-
-            batch.update(doc(detailsRef, detail.id), {
-                sectionId: correctedSectionId
-            });
-            count++;
-
-            if (count >= 400) {
-                await batch.commit();
-                count = 0;
-            }
-        }
-    }
-
-    if (count > 0) await batch.commit();
-    console.log(`[Repair] Completed. Relinked ${allDetails.filter(d => d.sectionId && d.sectionId.startsWith(doublePrefix)).length} notes.`);
-    return { success: true, count: allDetails.filter(d => d.sectionId && d.sectionId.startsWith(doublePrefix)).length };
-};
-
-/**
- * Permanent Database Cleanup: Merges and deletes duplicate section records.
- */
-export const cleanupDuplicateSections = async (projectId) => {
-    if (!projectId) throw new Error("Project ID is required for cleanup");
-
-    console.log(`[Cleanup] Starting cleanup for project: ${projectId}`);
-    const q = query(sectionsRef, where('projectId', '==', projectId));
-    const snap = await getDocs(q);
-    const rawSections = snapToData(snap);
-
-    const doublePrefix = `${projectId}_${projectId}_`;
-    const toDelete = [];
-    const toUpdate = []; // [{docId, data}]
-
-    // Group by short ID
-    const groups = {};
-    rawSections.forEach(s => {
-        const sid = getShortId(s, projectId);
-        if (!groups[sid]) groups[sid] = [];
-        groups[sid].push(s);
-    });
-
-    for (const sid in groups) {
-        const members = groups[sid];
-        if (members.length <= 1) continue;
-
-        // Find the "best" one (single-prefixed and latest)
-        const correctDocId = `${projectId}_${sid}`;
-        const malformedOnes = members.filter(m => m.docId.startsWith(doublePrefix));
-        const correctOne = members.find(m => m.docId === correctDocId);
-
-        // Find the overall latest data among all members
-        const latestMember = [...members].sort((a, b) => new Date(b.lastModified || 0) - new Date(a.lastModified || 0))[0];
-
-        if (correctOne) {
-            // Update the correct one if it's not the latest
-            if (latestMember.docId !== correctOne.docId) {
-                console.log(`[Cleanup] Updating ${correctOne.docId} with newer data from ${latestMember.docId}`);
-                const { docId, id, ...cleanData } = latestMember;
-                toUpdate.push({ docId: correctOne.docId, data: cleanData });
-            }
-        } else {
-            // Correct one doesn't exist? Create it from the latest
-            console.log(`[Cleanup] Creating missing ${correctDocId} from ${latestMember.docId}`);
-            const { docId, id, ...cleanData } = latestMember;
-            toUpdate.push({ docId: correctDocId, data: cleanData });
-        }
-
-        // Anything that isn't the correctDocId should be deleted
-        malformedOnes.forEach(m => {
-            if (m.docId !== correctDocId) {
-                toDelete.push(m.docId);
-            }
-        });
-    }
-
-    const batch = writeBatch(db);
-    let count = 0;
-
-    // Process Updates
-    for (const item of toUpdate) {
-        batch.set(doc(sectionsRef, item.docId), { ...item.data, id: getShortId({ id: item.docId }, projectId) }, { merge: true });
-        count++;
-        if (count >= 400) { await batch.commit(); count = 0; }
-    }
-
-    // Process Deletions
-    for (const dId of toDelete) {
-        console.log(`[Cleanup] Deleting duplicate: ${dId}`);
-        batch.delete(doc(sectionsRef, dId));
-        count++;
-        if (count >= 400) { await batch.commit(); count = 0; }
-    }
-
-    if (count > 0) await batch.commit();
-
-    console.log(`[Cleanup] Completed. Updated ${toUpdate.length} and deleted ${toDelete.length} records.`);
-    return { success: true, updated: toUpdate.length, deleted: toDelete.length };
-};
-
 export const deleteSection = async (sectionDocId, username) => {
     await deleteDoc(doc(sectionsRef, sectionDocId));
 };
@@ -456,97 +338,6 @@ export const getSharedDaysPlan = async (projectId) => {
         console.error("Error fetching shared days plan:", e);
     }
     return [];
-};
-
-export const migrateLegacyData = async (targetProjectId, username) => {
-    console.log(`[Migration] Starting migration to project: ${targetProjectId}`);
-    if (!targetProjectId) throw new Error("Target Project ID is required for migration");
-
-    const batch = writeBatch(db);
-    let operationCount = 0;
-
-    // 1. Migrate Sections - find ones missing projectId
-    const allSectionsSnap = await getDocs(sectionsRef);
-    const sectionsToMigrate = allSectionsSnap.docs.filter(d => !d.data().projectId);
-    console.log(`[Migration] Found ${sectionsToMigrate.length} potential legacy sections.`);
-
-    for (const d of sectionsToMigrate) {
-        const data = d.data();
-        const sectionId = data.id || d.id;
-        const newDocId = `${targetProjectId}_${sectionId}`;
-
-        // Skip if target doc already exists to avoid overwrite? 
-        // Or merge? Let's merge to be safe, assuming legacy is source of truth if not present.
-
-        // Create new scoped document
-        batch.set(doc(sectionsRef, newDocId), {
-            ...data,
-            projectId: targetProjectId,
-            lastModifiedBy: username || 'migration',
-            lastModified: new Date().toISOString()
-        }, { merge: true });
-
-        // Update details referencing this section (by OLD id)
-        const detailsQuery = query(detailsRef, where('sectionId', '==', d.id));
-        const detailsSnap = await getDocs(detailsQuery);
-        for (const detDoc of detailsSnap.docs) {
-            batch.update(doc(detailsRef, detDoc.id), {
-                sectionId: newDocId,
-                projectId: targetProjectId
-            });
-            operationCount++;
-        }
-
-        // Delete old document
-        batch.delete(doc(sectionsRef, d.id));
-        operationCount += 2;
-
-        if (operationCount >= 400) {
-            await batch.commit();
-            operationCount = 0;
-        }
-    }
-
-    // 2. Migrate Private Notes - find ones missing projectId
-    const allNotesSnap = await getDocs(privateNotesRef);
-    const notesToMigrate = allNotesSnap.docs.filter(d => !d.data().projectId);
-    console.log(`[Migration] Found ${notesToMigrate.length} legacy private notes.`);
-
-    for (const d of notesToMigrate) {
-        const data = d.data();
-        const sectionId = data.sectionId;
-        const noteUsername = data.username || username;
-
-        if (!sectionId || !noteUsername) continue;
-
-        const newNoteId = `${targetProjectId}_${sectionId}_${noteUsername}`;
-
-        batch.set(doc(privateNotesRef, newNoteId), {
-            ...data,
-            projectId: targetProjectId,
-            lastModified: new Date().toISOString()
-        }, { merge: true });
-
-        // Delete old document
-        if (d.id !== newNoteId) {
-            batch.delete(doc(privateNotesRef, d.id));
-        }
-
-        operationCount += 2;
-        if (operationCount >= 400) {
-            await batch.commit();
-            operationCount = 0;
-        }
-    }
-
-    if (operationCount > 0) await batch.commit();
-    console.log("[Migration] Completed successfully.");
-    return { success: true, migratedSections: sectionsToMigrate.length, migratedNotes: notesToMigrate.length };
-};
-
-export const consolidateLegacyProjects = async (username) => {
-    // Deprecated in favor of targeted migration
-    return { message: "Please use the 'Migrate Legacy Data' button on your target trip." };
 };
 
 // --- Data Management (Scoped) ---

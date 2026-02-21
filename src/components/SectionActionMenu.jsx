@@ -105,7 +105,7 @@ const SectionActionMenu = ({ section, allTypes = [], onChangeStatus, onChangeTyp
                                 onMouseEnter={(e) => e.target.style.backgroundColor = 'hsl(var(--accent))'}
                                 onMouseLeave={(e) => e.target.style.backgroundColor = section.status === 'Evaluated' ? 'hsl(var(--accent))' : 'transparent'}
                             >
-                                <CheckCircle size={14} style={{ color: 'rgb(34 197 94)' }} /> Evaluated
+                                <CheckCircle size={14} style={{ color: '#22c55e' }} /> Evaluated
                             </button>
                             <button
                                 onClick={(e) => { e.stopPropagation(); handleStatusChange('Pending'); }}
@@ -119,7 +119,7 @@ const SectionActionMenu = ({ section, allTypes = [], onChangeStatus, onChangeTyp
                                 onMouseEnter={(e) => e.target.style.backgroundColor = 'hsl(var(--accent))'}
                                 onMouseLeave={(e) => e.target.style.backgroundColor = section.status !== 'Evaluated' ? 'hsl(var(--accent))' : 'transparent'}
                             >
-                                <Circle size={14} style={{ color: 'rgb(234 179 8)' }} /> Pending
+                                <Circle size={14} style={{ color: '#eab308' }} /> Pending
                             </button>
 
                             {/* Divider */}

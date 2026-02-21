@@ -1,40 +1,37 @@
-/* Main Page Background - Pure Black */
 .project-selection-page {
     min-height: 100vh;
     width: 100%;
-    background-color: #000000;
+    background-color: hsl(var(--background));
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 20px;
     font-family: 'Inter', sans-serif;
-    color: #ffffff;
+    color: hsl(var(--foreground));
 }
 
-/* The Centered Floating Dashboard Box */
 .dashboard-box {
     width: 100%;
     max-width: 1100px;
     height: 85vh;
     min-height: 600px;
-    background-color: #121212;
+    background-color: hsl(var(--card));
     /* Darker Zinc equivalent */
     border-radius: 32px;
     /* Huge rounded corners */
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
     /* Deep shadow */
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid hsl(var(--border) / 0.4);
     display: flex;
     overflow: hidden;
     /* Clips content to rounded corners */
 }
 
-/* --- Left Sidebar --- */
 .dashboard-sidebar {
     width: 280px;
-    background-color: rgba(255, 255, 255, 0.03);
+    background-color: hsl(var(--muted) / 0.15);
     /* Subtle separation */
-    border-right: 1px solid rgba(255, 255, 255, 0.05);
+    border-right: 1px solid hsl(var(--border) / 0.4);
     padding: 30px;
     display: flex;
     flex-direction: column;
@@ -49,12 +46,13 @@
     background: linear-gradient(135deg, #60a5fa, #a78bfa);
     /* Blue to Purple */
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 
 .user-greeting p {
     font-size: 13px;
-    color: #a1a1aa;
+    color: hsl(var(--muted-foreground));
 }
 
 .menu-label {
@@ -62,7 +60,7 @@
     text-transform: uppercase;
     letter-spacing: 1px;
     font-weight: 600;
-    color: #52525b;
+    color: hsl(var(--muted-foreground) / 0.7);
     margin-bottom: 8px;
     padding-left: 12px;
 }
@@ -73,7 +71,7 @@
     border-radius: 12px;
     border: none;
     background: transparent;
-    color: #a1a1aa;
+    color: hsl(var(--muted-foreground));
     text-align: left;
     font-size: 14px;
     font-weight: 500;
@@ -85,15 +83,15 @@
 }
 
 .sidebar-btn:hover {
-    background-color: rgba(255, 255, 255, 0.05);
-    color: #fff;
+    background-color: hsl(var(--accent) / 0.5);
+    color: hsl(var(--foreground));
 }
 
 .sidebar-btn.active {
-    background-color: #2563eb;
+    background-color: hsl(var(--primary));
     /* Strong Blue */
-    color: white;
-    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+    color: hsl(var(--primary-foreground));
+    box-shadow: 0 4px 12px hsl(var(--primary) / 0.3);
 }
 
 .maintenance-box {
@@ -118,10 +116,9 @@
 }
 
 
-/* --- Right Content Area --- */
 .dashboard-content {
     flex: 1;
-    background-color: #09090b;
+    background-color: hsl(var(--background));
     /* Very dark zinc */
     padding: 40px;
     display: flex;
@@ -140,7 +137,7 @@
 .section-title {
     font-size: 20px;
     font-weight: 600;
-    color: #fff;
+    color: hsl(var(--foreground));
 }
 
 /* Search Bar */
@@ -154,25 +151,25 @@
     left: 16px;
     top: 50%;
     transform: translateY(-50%);
-    color: #71717a;
+    color: hsl(var(--muted-foreground));
 }
 
 .search-input {
     width: 100%;
     height: 48px;
-    background-color: #18181b;
-    border: 1px solid #27272a;
+    background-color: hsl(var(--secondary) / 0.2);
+    border: 1px solid hsl(var(--border) / 0.6);
     border-radius: 12px;
     padding-left: 48px;
     padding-right: 16px;
-    color: #fff;
+    color: hsl(var(--foreground));
     font-size: 14px;
     outline: none;
     transition: border-color 0.2s;
 }
 
 .search-input:focus {
-    border-color: #3b82f6;
+    border-color: hsl(var(--primary));
 }
 
 
@@ -198,7 +195,7 @@
 }
 
 .projects-grid::-webkit-scrollbar-thumb {
-    background: #27272a;
+    background: hsl(var(--muted) / 0.8);
     border-radius: 3px;
 }
 
@@ -206,7 +203,7 @@
 .create-card {
     aspect-ratio: 16/9;
     /* Flatter than 4/3 */
-    border: 2px dashed #3f3f46;
+    border: 2px dashed hsl(var(--border));
     background: transparent;
     border-radius: 16px;
     display: flex;
@@ -225,28 +222,28 @@
 .plus-circle {
     width: 48px;
     height: 48px;
-    background-color: #27272a;
+    background-color: hsl(var(--secondary) / 0.4);
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #a1a1aa;
+    color: hsl(var(--muted-foreground));
     margin-top: 5px;
     margin-bottom: 12px;
     transition: all 0.2s;
 }
 
 .create-card:hover .plus-circle {
-    background-color: #3b82f6;
-    color: white;
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
     transform: scale(1.1);
 }
 
 .create-input {
     background: transparent;
     border: none;
-    border-bottom: 1px solid #3f3f46;
-    color: #fff;
+    border-bottom: 1px solid hsl(var(--border));
+    color: hsl(var(--foreground));
     text-align: center;
     padding: 4px;
     outline: none;
@@ -255,7 +252,7 @@
 }
 
 .create-input:focus {
-    border-color: #3b82f6;
+    border-color: hsl(var(--primary));
 }
 
 /* Project Card */
@@ -263,8 +260,8 @@
     position: relative;
     aspect-ratio: 16/9;
     /* Flatter than 4/3 */
-    background-color: #18181b;
-    border: 1px solid #27272a;
+    background-color: hsl(var(--card));
+    border: 1px solid hsl(var(--border) / 0.4);
     border-radius: 16px;
     padding: 20px;
     display: flex;
@@ -276,8 +273,8 @@
 
 .project-card:hover {
     transform: translateY(-4px);
-    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
-    border-color: #3f3f46;
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.4);
+    border-color: hsl(var(--primary) / 0.4);
 }
 
 .card-actions {
@@ -295,17 +292,17 @@
 }
 
 .action-btn {
-    background: #27272a;
+    background: hsl(var(--secondary) / 0.6);
     border: none;
-    color: #a1a1aa;
+    color: hsl(var(--muted-foreground));
     padding: 6px;
     border-radius: 6px;
     cursor: pointer;
 }
 
 .action-btn:hover {
-    background: #3b82f6;
-    color: white;
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
 }
 
 .action-btn.delete:hover {
@@ -324,10 +321,155 @@
     margin-bottom: 12px;
 }
 
+/* Edit Mode Styles - Premium Enhancements */
+.edit-mode-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.edit-field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.edit-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: hsl(var(--muted-foreground) / 0.7);
+}
+
+.edit-input-field {
+    background: hsl(var(--secondary) / 0.3);
+    border: 1px solid hsl(var(--border) / 0.4);
+    border-radius: 8px;
+    color: hsl(var(--foreground));
+    font-size: 14px;
+    width: 100%;
+    outline: none;
+    padding: 8px 12px;
+    transition: all 0.2s;
+}
+
+.edit-input-field:focus {
+    border-color: hsl(var(--primary));
+    background: hsl(var(--primary) / 0.05);
+}
+
+.edit-date-range {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.date-input-wrapper {
+    position: relative;
+    flex: 1;
+}
+
+.edit-date-input {
+    background: hsl(var(--secondary) / 0.4);
+    border: 1px solid hsl(var(--border) / 0.8);
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: hsl(var(--foreground));
+    font-size: 14px;
+    width: 100%;
+    outline: none;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: text;
+}
+
+.edit-date-input:focus {
+    border-color: hsl(var(--primary));
+    background: hsl(var(--secondary) / 0.6);
+    box-shadow: 0 0 0 2px hsl(var(--primary) / 0.2);
+}
+
+.edit-date-input::-webkit-calendar-picker-indicator {
+    filter: invert(1) opacity(0.5);
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.edit-date-input::-webkit-calendar-picker-indicator:hover {
+    transform: scale(1.1);
+}
+
+[data-theme="light"] .edit-date-input::-webkit-calendar-picker-indicator {
+    filter: invert(0.2) sepia(1) saturate(5) hue-rotate(190deg);
+    /* Blue-ish tint for light mode */
+}
+
+.date-separator {
+    color: hsl(var(--border));
+    font-size: 14px;
+}
+
+.edit-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.btn-edit-save,
+.btn-edit-cancel {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+}
+
+.btn-edit-save {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+}
+
+.btn-edit-save:hover {
+    background: hsl(var(--primary) / 0.9);
+    transform: translateY(-1px);
+}
+
+.btn-edit-cancel {
+    background: hsl(var(--muted) / 0.3);
+    color: hsl(var(--muted-foreground));
+    border-color: hsl(var(--border) / 0.4);
+}
+
+.btn-edit-cancel:hover {
+    background: hsl(var(--muted) / 0.5);
+    color: hsl(var(--foreground));
+    border-color: hsl(var(--border));
+}
+
 .card-title {
     font-size: 16px;
     font-weight: 600;
-    color: #fff;
+    color: hsl(var(--foreground));
     margin: 0;
     line-height: 1.4;
 }
@@ -337,7 +479,16 @@
     justify-content: space-between;
     align-items: center;
     font-size: 12px;
-    color: #71717a;
+    color: hsl(var(--muted-foreground));
+}
+
+.card-footer svg {
+    color: hsl(var(--primary));
+}
+
+[data-theme="light"] .card-footer svg {
+    color: hsl(var(--primary) / 0.9);
+    /* Stronger contrast for light mode */
 }
 
 .legacy-badge {
@@ -493,11 +644,11 @@
         width: 56px;
         height: 56px;
         border-radius: 50%;
-        background-color: #2563eb;
-        color: white;
+        background-color: hsl(var(--primary));
+        color: hsl(var(--primary-foreground));
         align-items: center;
         justify-content: center;
-        box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);
+        box-shadow: 0 4px 15px hsl(var(--primary) / 0.4);
         border: none;
         z-index: 100;
         cursor: pointer;
