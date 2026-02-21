@@ -181,11 +181,11 @@ const ProjectSelection = ({ user, onSelectProject }) => {
 
     // Theme state
     // 'dark' (default), 'light', 'medium'
-    const [theme, setTheme] = useState(document.documentElement.getAttribute('data-theme') || 'dark');
+    const [theme, setTheme] = useState(document.documentElement.getAttribute('data-theme') || 'light');
 
     // Ensure initial sync
     useEffect(() => {
-        const current = document.documentElement.getAttribute('data-theme') || 'dark';
+        const current = document.documentElement.getAttribute('data-theme') || 'light';
         setTheme(current);
     }, []);
 

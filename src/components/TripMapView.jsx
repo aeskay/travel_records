@@ -100,7 +100,7 @@ const FitBounds = ({ positions }) => {
 
 // --- Hook to detect current theme ---
 const useTheme = () => {
-    const [theme, setTheme] = useState(document.documentElement.getAttribute('data-theme') || 'dark');
+    const [theme, setTheme] = useState(document.documentElement.getAttribute('data-theme') || 'light');
 
     useEffect(() => {
         const observer = new MutationObserver(() => {

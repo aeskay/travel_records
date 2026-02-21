@@ -5,7 +5,7 @@ import { Moon, Sun, Sunset, Download, Upload, LogOut, User, Edit2, Save, Trash2,
 
 const SettingsView = ({ onClose, isAdmin, currentProject, onProjectUpdate }) => {
     const { user, logout, updateUserProfile, deleteUserAccount } = useUser();
-    const [theme, setTheme] = useState(document.documentElement.getAttribute('data-theme') || 'dark');
+    const [theme, setTheme] = useState(document.documentElement.getAttribute('data-theme') || 'light');
 
     const fileInputRef = useRef(null);
 
