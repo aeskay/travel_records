@@ -5,18 +5,24 @@ import './LoginScreen.css';
 
 const LoginScreen = () => {
     const [isLogin, setIsLogin] = useState(true);
+    const [isForgotPassword, setIsForgotPassword] = useState(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
-    const { login, signup } = useUser();
+    const [message, setMessage] = useState('');
+    const { login, signup, resetPassword } = useUser();
     const [loading, setLoading] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
+        setMessage('');
         setLoading(true);
         try {
-            if (isLogin) {
+            if (isForgotPassword) {
+                await resetPassword(email);
+                setMessage('Check your inbox for further instructions.');
+            } else if (isLogin) {
                 await login(email, password);
             } else {
                 await signup(email, password);
@@ -27,6 +33,19 @@ const LoginScreen = () => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const toggleMode = () => {
+        setIsLogin(!isLogin);
+        setIsForgotPassword(false);
+        setError('');
+        setMessage('');
+    };
+
+    const toggleForgotPassword = (val) => {
+        setIsForgotPassword(val);
+        setError('');
+        setMessage('');
     };
 
     return (
@@ -53,19 +72,21 @@ const LoginScreen = () => {
                 </div>
 
                 <h2 style={{ marginBottom: '0.5rem', fontWeight: 'bold', fontSize: '1.5rem' }}>
-                    {isLogin ? 'Welcome Back' : 'Create Account'}
+                    {isForgotPassword ? 'Reset Password' : (isLogin ? 'Welcome Back' : 'Create Account')}
                 </h2>
                 <p style={{ color: 'hsl(var(--muted-foreground))', marginBottom: '2rem' }}>
-                    {isLogin ? 'Enter your credentials to access.' : 'Sign up to start tracking.'}
+                    {isForgotPassword ? 'Enter your email to receive a reset link.' : (isLogin ? 'Enter your credentials to access.' : 'Sign up to start tracking.')}
                 </p>
 
                 {error && (
-                    <div style={{
-                        padding: '0.75rem', marginBottom: '1.5rem',
-                        backgroundColor: 'hsl(var(--destructive) / 0.15)',
-                        color: 'hsl(var(--destructive))', borderRadius: '0.5rem', fontSize: '0.9rem'
-                    }}>
+                    <div className="alert alert-error" style={{ marginBottom: '1.5rem' }}>
                         {error}
+                    </div>
+                )}
+
+                {message && (
+                    <div className="alert alert-success" style={{ marginBottom: '1.5rem' }}>
+                        {message}
                     </div>
                 )}
 
@@ -97,53 +118,70 @@ const LoginScreen = () => {
                         </div>
                     </div>
 
-                    <div style={{ marginBottom: '1.5rem', textAlign: 'left' }}>
-                        <label className="text-sm font-medium mb-1 block">Password</label>
-                        <div style={{ position: 'relative' }}>
-                            <Lock
-                                size={18}
-                                style={{
-                                    position: 'absolute',
-                                    left: '0.75rem',
-                                    top: '50%',
-                                    transform: 'translateY(-50%)',
-                                    color: 'hsl(var(--muted-foreground))',
-                                    pointerEvents: 'none'
-                                }}
-                            />
-                            <input
-                                type="password"
-                                className="input w-full"
-                                style={{ paddingLeft: '2.5rem' }}
-                                placeholder="••••••••"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                required
-                            />
+                    {!isForgotPassword && (
+                        <div style={{ marginBottom: '1.5rem', textAlign: 'left' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                                <label className="text-sm font-medium block">Password</label>
+                                {isLogin && (
+                                    <button
+                                        type="button"
+                                        onClick={() => toggleForgotPassword(true)}
+                                        className="forgot-password-link"
+                                    >
+                                        Forgot Password?
+                                    </button>
+                                )}
+                            </div>
+                            <div style={{ position: 'relative' }}>
+                                <Lock
+                                    size={18}
+                                    style={{
+                                        position: 'absolute',
+                                        left: '0.75rem',
+                                        top: '50%',
+                                        transform: 'translateY(-50%)',
+                                        color: 'hsl(var(--muted-foreground))',
+                                        pointerEvents: 'none'
+                                    }}
+                                />
+                                <input
+                                    type="password"
+                                    className="input w-full"
+                                    style={{ paddingLeft: '2.5rem' }}
+                                    placeholder="••••••••"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    required
+                                />
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     <button type="submit" className="btn btn-primary w-full justify-center py-2" disabled={loading}>
-                        {loading ? 'Processing...' : (isLogin ? 'Sign In' : 'Sign Up')}
+                        {loading ? 'Processing...' : (isForgotPassword ? 'Reset Password' : (isLogin ? 'Sign In' : 'Sign Up'))}
                         {!loading && <ArrowRight size={18} style={{ marginLeft: '0.5rem' }} />}
                     </button>
                 </form>
 
                 <div style={{ marginTop: '1.5rem', fontSize: '0.875rem', color: 'hsl(var(--muted-foreground))' }}>
-                    {isLogin ? "Don't have an account? " : "Already have an account? "}
-                    <button
-                        onClick={() => setIsLogin(!isLogin)}
-                        style={{
-                            color: 'hsl(var(--primary))',
-                            fontWeight: 500,
-                            background: 'none',
-                            border: 'none',
-                            cursor: 'pointer',
-                            textDecoration: 'underline'
-                        }}
-                    >
-                        {isLogin ? 'Sign Up' : 'Log In'}
-                    </button>
+                    {isForgotPassword ? (
+                        <button
+                            onClick={() => toggleForgotPassword(false)}
+                            className="mode-toggle-link"
+                        >
+                            Back to Login
+                        </button>
+                    ) : (
+                        <>
+                            {isLogin ? "Don't have an account? " : "Already have an account? "}
+                            <button
+                                onClick={toggleMode}
+                                className="mode-toggle-link"
+                            >
+                                {isLogin ? 'Sign Up' : 'Log In'}
+                            </button>
+                        </>
+                    )}
                 </div>
             </div>
         </div>

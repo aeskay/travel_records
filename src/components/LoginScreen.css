@@ -43,3 +43,43 @@
         padding: 0 1rem;
     }
 }
+
+.forgot-password-link {
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+}
+
+.forgot-password-link:hover {
+    color: hsl(var(--primary));
+    text-decoration: underline;
+}
+
+.mode-toggle-link {
+    color: hsl(var(--primary));
+    font-weight: 500;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: underline;
+    padding: 0;
+}
+
+.alert {
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.alert-error {
+    background-color: hsl(var(--destructive) / 0.15);
+    color: hsl(var(--destructive));
+}
+
+.alert-success {
+    background-color: hsl(var(--success, 142 76% 36%) / 0.15);
+    color: hsl(var(--success, 142 76% 36%));
+}

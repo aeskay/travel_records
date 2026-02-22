@@ -1,6 +1,6 @@
 import { createContext, useState, useContext, useEffect } from 'react';
 import { auth } from '../firebase';
-import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile, deleteUser } from 'firebase/auth';
+import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile, deleteUser, sendPasswordResetEmail } from 'firebase/auth';
 
 const UserContext = createContext();
 
@@ -40,6 +40,10 @@ export const UserProvider = ({ children }) => {
         await signOut(auth);
     };
 
+    const resetPassword = async (email) => {
+        await sendPasswordResetEmail(auth, email);
+    };
+
     const updateUserProfile = async (displayName) => {
         const currentUser = auth.currentUser;
         if (currentUser) {
@@ -58,7 +62,7 @@ export const UserProvider = ({ children }) => {
     };
 
     return (
-        <UserContext.Provider value={{ user, login, signup, logout, updateUserProfile, deleteUserAccount, loading }}>
+        <UserContext.Provider value={{ user, login, signup, logout, resetPassword, updateUserProfile, deleteUserAccount, loading }}>
             {children}
         </UserContext.Provider>
     );
