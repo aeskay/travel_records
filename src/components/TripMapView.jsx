@@ -1311,7 +1311,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
             doc.setFontSize(14);
             doc.setTextColor(0);
             const estTime = getEstimatedTime(day);
-            const dateStr = day.date ? ` - ${new Date(day.date).toLocaleDateString()}` : '';
+            const dateStr = day.date ? ` - ${new Date(day.date + 'T12:00:00').toLocaleDateString()}` : '';
             doc.text(`Day ${day.day}${dateStr} (${estTime})`, 14, finalY);
             finalY += 10;
 

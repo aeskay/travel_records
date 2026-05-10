@@ -21,7 +21,7 @@ export const exportToExcel = async (sections, username, showAlert, daysPlan = []
             // Find which day this section belongs to
             const dayObj = daysPlan.find(d => d.sequences?.includes(Number(s.test_sequence)));
             const dayNum = dayObj ? `Day ${dayObj.day}` : '';
-            const dayDate = dayObj?.date ? new Date(dayObj.date).toLocaleDateString() : '';
+            const dayDate = dayObj?.date ? new Date(dayObj.date + 'T12:00:00').toLocaleDateString() : '';
 
             return {
                 ID: s.id,
