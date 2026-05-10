@@ -780,11 +780,17 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
     };
 
     const handleDateChange = (dayNum, newDate) => {
-        const newDaysPlan = daysPlan.map(d => {
-            if (d.day === dayNum) return { ...d, date: newDate };
-            return d;
+        setDaysPlan(prev => {
+            const newPlan = prev.map(d => {
+                if (d.day === dayNum) return { ...d, date: newDate };
+                return d;
+            });
+            // Force immediate save for date changes so they aren't lost on quick refresh
+            if (isAdmin && projectId) {
+                saveSharedDaysPlan(projectId, newPlan).catch(console.error);
+            }
+            return newPlan;
         });
-        setDaysPlan(newDaysPlan);
     };
 
     const [isLegendOpen, setIsLegendOpen] = useState(true); // Default open on desktop, will override with CSS for mobile if needed, or check width
@@ -806,15 +812,13 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
         }
     }, [projectId]);
 
-    // Save shared plan (debounced) - Admin Only
+    // Save shared plan - Admin Only
+    // This is run whenever daysPlan changes (e.g. from drag/drop sequence changes).
     useEffect(() => {
-        if (isAdmin && projectId && isPlanLoaded) {
+        if (isAdmin && projectId && isPlanLoaded && daysPlan !== undefined) {
             const timer = setTimeout(() => {
-                // Save even if empty to clear it? Or only if modified?
-                if (daysPlan !== undefined) {
-                    saveSharedDaysPlan(projectId, daysPlan);
-                }
-            }, 1000); // 1s debounce
+                saveSharedDaysPlan(projectId, daysPlan).catch(console.error);
+            }, 500); // reduced debounce
             return () => clearTimeout(timer);
         }
     }, [daysPlan, isAdmin, projectId, isPlanLoaded]);
