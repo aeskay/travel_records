@@ -20,7 +20,8 @@ const ImportModal = ({ onClose, onImportComplete, projectId }) => {
         { label: 'District', required: false },
         { label: 'County', required: false },
         { label: 'City', required: false },
-        { label: 'GPS Coordinates', required: false },
+        { label: 'Start Coordinates', required: false },
+        { label: 'End Coordinates', required: false },
         { label: 'Test Sequence', required: false },
     ];
 

@@ -1,0 +1,31 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Require users to be logged in to Firebase Auth
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Apply to all collections used by the app
+    match /projects/{projectId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /sections/{sectionId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /details/{detailId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /private_notes/{noteId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /user_plans/{planId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Default fallback (deny everything else)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -457,4 +457,32 @@ export const duplicateProject = async (sourceProjectId, newName, username) => {
     return newProject;
 };
 
+export const getSectionCountsForProject = async (projectId) => {
+    if (!projectId) return { total: 0, evaluated: 0 };
+    try {
+        const q = query(sectionsRef, where('projectId', '==', projectId));
+        const snap = await getDocs(q);
+        const raw = snapToData(snap);
+
+        // Apply the same deduplication as getSections so counts match what the user sees
+        const dedupMap = new Map();
+        raw.forEach(s => {
+            const sid = getShortId(s, projectId);
+            const current = dedupMap.get(sid);
+            if (!current || new Date(s.lastModified || 0) > new Date(current.lastModified || 0)) {
+                dedupMap.set(sid, s);
+            }
+        });
+
+        const sections = Array.from(dedupMap.values());
+        const total = sections.length;
+        const evaluated = sections.filter(s => s.status === 'Evaluated').length;
+        return { total, evaluated };
+    } catch (e) {
+        console.error('Error fetching section counts:', e);
+        return { total: 0, evaluated: 0 };
+    }
+};
+
+
 

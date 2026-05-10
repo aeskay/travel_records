@@ -53,7 +53,8 @@ export const parseCSV = (file) => {
                     { field: 'district', headers: ['District'] },
                     { field: 'county', headers: ['County'] },
                     { field: 'city', headers: ['City'] },
-                    { field: 'coordinates', headers: ['GPS Coordinates', 'GPS', 'Coordinates', 'LatLong'] },
+                    { field: 'coordinates', headers: ['GPS Coordinates', 'GPS', 'Coordinates', 'LatLong', 'Start Coordinates', 'Start GPS'] },
+                    { field: 'endCoordinates', headers: ['End Coordinates', 'End GPS', 'End LatLong', 'EndCoordinates'] },
                     { field: 'test_sequence', headers: ['Test Sequence', 'TestSequence', 'Sequence'] },
                 ];
 

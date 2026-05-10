@@ -10,6 +10,7 @@ const ManualAddModal = ({ onClose, onComplete, existingTypes = [] }) => {
         city: '',
         county: '',
         coordinates: '',
+        endCoordinates: '',
         testing_sn: ''
     });
 
@@ -166,13 +167,26 @@ const ManualAddModal = ({ onClose, onComplete, existingTypes = [] }) => {
                             />
                         </div>
                         <div className="form-group">
-                            <label className="text-sm font-semibold text-muted mb-1 block uppercase tracking-wider">GPS Coordinates</label>
+                            <label className="text-sm font-semibold text-muted mb-1 block uppercase tracking-wider">Start Coordinates</label>
                             <div className="relative">
                                 <input
                                     type="text"
                                     name="coordinates"
                                     className="input font-mono"
                                     value={formData.coordinates}
+                                    onChange={handleChange}
+                                    placeholder="Lat, Long"
+                                />
+                            </div>
+                        </div>
+                        <div className="form-group">
+                            <label className="text-sm font-semibold text-muted mb-1 block uppercase tracking-wider">End Coordinates <span style={{fontSize:'0.65rem', fontWeight:400, textTransform:'none', letterSpacing:0}}>(optional)</span></label>
+                            <div className="relative">
+                                <input
+                                    type="text"
+                                    name="endCoordinates"
+                                    className="input font-mono"
+                                    value={formData.endCoordinates}
                                     onChange={handleChange}
                                     placeholder="Lat, Long"
                                 />

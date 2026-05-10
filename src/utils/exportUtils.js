@@ -25,7 +25,8 @@ export const exportToExcel = async (sections, username, showAlert) => {
             District: s.district || '',
             City: s.city || '',
             County: s.county || '',
-            GPS: s.coordinates || '',
+            'Start Coordinates': s.coordinates || '',
+            'End Coordinates': s.endCoordinates || '',
             'Evaluated At': s.evaluatedAt ? new Date(s.evaluatedAt).toLocaleString() : '',
             'Last Modified': s.lastModified ? new Date(s.lastModified).toLocaleString() : '',
             'Modified By': s.lastModifiedBy || ''

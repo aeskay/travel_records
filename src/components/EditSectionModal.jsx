@@ -30,7 +30,8 @@ const EditSectionModal = ({ section, onSave, onClose }) => {
         { key: 'city', label: 'City' },
         { key: 'county', label: 'County' },
         { key: 'district', label: 'District' },
-        { key: 'coordinates', label: 'GPS Coordinates', placeholder: 'e.g. 29.7604,-95.3698' },
+        { key: 'coordinates', label: 'Start Coordinates', placeholder: 'e.g. 29.7604,-95.3698' },
+        { key: 'endCoordinates', label: 'End Coordinates', placeholder: 'e.g. 29.8000,-95.3500 (optional)' },
     ];
 
     return (

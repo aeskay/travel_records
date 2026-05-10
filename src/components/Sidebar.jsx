@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Upload, Plus, Search, ChevronDown, ChevronUp, CheckCircle, Settings as SettingsIcon, Printer, MapPinned } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Upload, Plus, Search, ChevronDown, ChevronUp, CheckCircle, Settings as SettingsIcon, Printer, MapPinned, ArrowLeft } from 'lucide-react';
 import SectionActionMenu from './SectionActionMenu';
 import { printSections } from '../utils/printUtils';
 
@@ -91,13 +91,31 @@ const Sidebar = ({
                         TechMRT Trip Records
                     </h2>
                     {projectName && (
-                        <div
-                            className="text-xs text-muted-foreground mt-1 flex items-center gap-1 cursor-pointer hover:text-primary transition-colors"
-                            onClick={onSwitchProject}
-                            title="Switch Trip"
-                        >
-                            <span className="truncate font-medium">{projectName}</span>
-                            <ChevronDown size={12} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', overflow: 'hidden', minWidth: 0 }}>
+                            <button
+                                onClick={onSwitchProject}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: '4px',
+                                    fontSize: '0.7rem', padding: '2px 7px',
+                                    borderRadius: '999px', whiteSpace: 'nowrap', flexShrink: 0,
+                                    background: 'hsl(var(--primary) / 0.12)',
+                                    color: 'hsl(var(--primary))',
+                                    border: '1px solid hsl(var(--primary) / 0.25)',
+                                    fontWeight: 600, cursor: 'pointer'
+                                }}
+                                title="Go back to trip selection"
+                            >
+                                <ArrowLeft size={10} />
+                                All Trips
+                            </button>
+                            <span style={{ color: 'hsl(var(--muted-foreground))', fontSize: '0.7rem', flexShrink: 0 }}>/</span>
+                            <span style={{
+                                fontSize: '0.7rem', fontWeight: 500, overflow: 'hidden',
+                                textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                color: 'hsl(var(--foreground) / 0.7)', minWidth: 0
+                            }} title={projectName}>
+                                {projectName}
+                            </span>
                         </div>
                     )}
                 </div>

@@ -72,16 +72,22 @@ const SectionDetail = ({ section, onUpdate, allTypes, onChangeStatus, onChangeTy
 
                         <div className="flex gap-2 items-center map-print">
                             {/* Badge removed from here for mobile */}
-                            {section.coordinates && (
-                                <a
-                                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(section.coordinates)}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="btn btn-outline"
-                                >
-                                    <Map size={18} /> Map
-                                </a>
-                            )}
+                            {section.coordinates && (() => {
+                                const mapsUrl = section.endCoordinates
+                                    ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(section.coordinates)}&destination=${encodeURIComponent(section.endCoordinates)}`
+                                    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(section.coordinates)}`;
+                                return (
+                                    <a
+                                        href={mapsUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="btn btn-outline"
+                                        title={section.endCoordinates ? 'View section extent in Google Maps' : 'View in Google Maps'}
+                                    >
+                                        <Map size={18} /> {section.endCoordinates ? 'Map (Start→End)' : 'Map'}
+                                    </a>
+                                );
+                            })()}
                             <button
                                 onClick={() => printSections(section, user?.username)}
                                 className="btn btn-outline"
@@ -117,9 +123,15 @@ const SectionDetail = ({ section, onUpdate, allTypes, onChangeStatus, onChangeTy
                             <span className="font-medium">{section.test_sequence || 'N/A'}</span>
                         </div>
                         <div className="flex flex-col gap-1">
-                            <span className="text-xs font-semibold text-muted uppercase tracking-wider">GPS Coordinates</span>
+                            <span className="text-xs font-semibold text-muted uppercase tracking-wider">Start Coordinates</span>
                             <span className="font-mono text-sm">{section.coordinates || 'N/A'}</span>
                         </div>
+                        {section.endCoordinates && (
+                            <div className="flex flex-col gap-1">
+                                <span className="text-xs font-semibold text-muted uppercase tracking-wider">End Coordinates</span>
+                                <span className="font-mono text-sm">{section.endCoordinates}</span>
+                            </div>
+                        )}
                         <div className="flex flex-col gap-1">
                             <span className="text-xs font-semibold text-muted uppercase tracking-wider">Status</span>
                             <div className="flex flex-col">

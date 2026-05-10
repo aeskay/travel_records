@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { getProjects, createProject, deleteProject, updateProject, duplicateProject } from '../db';
+import { getProjects, createProject, deleteProject, updateProject, duplicateProject, getSectionCountsForProject } from '../db';
 import { useUser } from '../context/UserContext';
-import { Plus, FolderOpen, Loader, Trash2, Edit2, Map, Calendar, X, Check, Wrench, User, Mail, Moon, Sun, Sunset, LogOut, Copy } from 'lucide-react';
+import { Plus, FolderOpen, Loader, Trash2, Edit2, Map, Calendar, X, Check, Wrench, User, Mail, Moon, Sun, Sunset, LogOut, Copy, CheckCheck, Activity, RotateCcw } from 'lucide-react';
 import { useNotification } from '../context/NotificationContext';
 import './ProjectSelection.css';
 
@@ -38,13 +38,29 @@ const ProjectSelection = ({ user, onSelectProject }) => {
     const { logout, updateUserProfile } = useUser();
 
     const [searchQuery, setSearchQuery] = useState('');
-    const [activeTab, setActiveTab] = useState('all'); // 'all', 'recent'
+    const [activeTab, setActiveTab] = useState('inprogress'); // 'inprogress', 'completed', 'recent', 'all', 'settings'
+    const [sectionCounts, setSectionCounts] = useState({}); // { [projectId]: { total, evaluated } }
+
+    const fetchSectionCounts = async (projectList) => {
+        if (!projectList || projectList.length === 0) return;
+        try {
+            const results = await Promise.all(
+                projectList.map(async (p) => ({ id: p.id, counts: await getSectionCountsForProject(p.id) }))
+            );
+            const map = {};
+            results.forEach(r => { map[r.id] = r.counts; });
+            setSectionCounts(map);
+        } catch (e) {
+            console.error('Error fetching section counts:', e);
+        }
+    };
 
     const fetchProjects = async () => {
         try {
             setLoading(true);
             const data = await getProjects(user.username);
             setProjects(data || []);
+            fetchSectionCounts(data || []); // Load counts in background
         } catch (err) {
             console.error("Error loading trips:", err);
             setError("Failed to load trips.");
@@ -111,6 +127,19 @@ const ProjectSelection = ({ user, onSelectProject }) => {
         }
     };
 
+    const handleMarkComplete = async (e, projectId, isCurrentlyComplete) => {
+        e.stopPropagation();
+        try {
+            await updateProject(projectId, {
+                status: isCurrentlyComplete ? 'active' : 'completed',
+                completedAt: isCurrentlyComplete ? null : new Date().toISOString()
+            }, user.username);
+            await fetchProjects();
+        } catch (err) {
+            showAlert('Failed to update trip status: ' + err.message);
+        }
+    };
+
 
 
     const startEditing = (e, project) => {
@@ -146,15 +175,18 @@ const ProjectSelection = ({ user, onSelectProject }) => {
     // Filter projects based on search and tab
     const filteredProjects = projects.filter(p => {
         const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesTab = activeTab === 'all' || (activeTab === 'recent' && new Date(p.createdAt) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
-
-        // Check if user has access (is creator, is in users list, or is global admin)
-        // Also show legacy projects if they don't have users array (backwards compat)
         const isGlobalAdmin = user.email === 'samuel.alalade@ttu.edu';
         const hasAccess = isGlobalAdmin ||
             p.createdBy === user.username ||
             (p.users && p.users.some(u => u.email === user.email)) ||
-            (!p.users && !p.createdBy); // Show old legacy if no owner? Optional.
+            (!p.users && !p.createdBy);
+
+        const isCompleted = p.status === 'completed';
+        let matchesTab = true;
+        if (activeTab === 'inprogress') matchesTab = !isCompleted;
+        else if (activeTab === 'completed') matchesTab = isCompleted;
+        else if (activeTab === 'recent') matchesTab = new Date(p.createdAt) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        // 'all' matches everything
 
         return matchesSearch && matchesTab && hasAccess;
     });
@@ -226,11 +258,18 @@ const ProjectSelection = ({ user, onSelectProject }) => {
                     <div className="sidebar-menu">
                         <div className="menu-label">Menu</div>
                         <button
-                            onClick={() => setActiveTab('all')}
-                            className={`sidebar-btn ${activeTab === 'all' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('inprogress')}
+                            className={`sidebar-btn ${activeTab === 'inprogress' ? 'active' : ''}`}
                         >
-                            <FolderOpen size={18} />
-                            All Trips
+                            <Activity size={18} />
+                            In Progress
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('completed')}
+                            className={`sidebar-btn ${activeTab === 'completed' ? 'active' : ''}`}
+                        >
+                            <CheckCheck size={18} />
+                            Completed
                         </button>
                         <button
                             onClick={() => setActiveTab('recent')}
@@ -238,6 +277,13 @@ const ProjectSelection = ({ user, onSelectProject }) => {
                         >
                             <Calendar size={18} />
                             Recent
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('all')}
+                            className={`sidebar-btn ${activeTab === 'all' ? 'active' : ''}`}
+                        >
+                            <FolderOpen size={18} />
+                            All Trips
                         </button>
                         <button
                             onClick={() => setActiveTab('settings')}
@@ -256,6 +302,8 @@ const ProjectSelection = ({ user, onSelectProject }) => {
                     {/* Header */}
                     <div className="content-header">
                         <h2 className="section-title">
+                            {activeTab === 'inprogress' && 'In Progress'}
+                            {activeTab === 'completed' && 'Completed Trips'}
                             {activeTab === 'all' && 'All Trips'}
                             {activeTab === 'recent' && 'Recent Trips'}
                             {activeTab === 'settings' && 'Settings & Profile'}
@@ -397,6 +445,13 @@ const ProjectSelection = ({ user, onSelectProject }) => {
                                         <div className="card-actions">
                                             {isProjectAdmin && (
                                                 <>
+                                                    <button
+                                                        onClick={(e) => handleMarkComplete(e, project.id, project.status === 'completed')}
+                                                        className={`action-btn complete-btn ${project.status === 'completed' ? 'is-complete' : ''}`}
+                                                        title={project.status === 'completed' ? 'Reopen Trip' : 'Mark as Complete'}
+                                                    >
+                                                        {project.status === 'completed' ? <RotateCcw size={14} /> : <CheckCheck size={14} />}
+                                                    </button>
                                                     <button onClick={(e) => startEditing(e, project)} className="action-btn">
                                                         <Edit2 size={14} />
                                                     </button>
@@ -473,13 +528,41 @@ const ProjectSelection = ({ user, onSelectProject }) => {
                                                 <Calendar size={14} className="calendar-icon" />
                                                 <span style={{ fontSize: '0.8rem', fontWeight: 500 }}>Trip Day(s): {formatDateRange(project.startDate, project.endDate)}</span>
                                             </div>
-                                            {project.role === 'viewer' && (
-                                                <span className="legacy-badge" style={{ background: '#3b82f6' }}>VIEWER</span>
-                                            )}
-                                            {project.name.includes('(Legacy)') && (
-                                                <span className="legacy-badge">LEGACY</span>
-                                            )}
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                {project.status === 'completed' && (
+                                                    <span className="complete-badge">DONE</span>
+                                                )}
+                                                {project.role === 'viewer' && (
+                                                    <span className="legacy-badge" style={{ background: '#3b82f6' }}>VIEWER</span>
+                                                )}
+                                                {project.name.includes('(Legacy)') && (
+                                                    <span className="legacy-badge">LEGACY</span>
+                                                )}
+                                            </div>
                                         </div>
+
+                                        {/* Progress Bar */}
+                                        {(() => {
+                                            const counts = sectionCounts[project.id];
+                                            if (!counts) return (
+                                                <div className="trip-progress">
+                                                    <div className="progress-bar-track"><div className="progress-bar-fill" style={{ width: '0%' }} /></div>
+                                                    <span className="progress-label">Loading...</span>
+                                                </div>
+                                            );
+                                            const { total, evaluated } = counts;
+                                            const pct = total > 0 ? Math.round((evaluated / total) * 100) : 0;
+                                            return (
+                                                <div className="trip-progress">
+                                                    <div className="progress-bar-track">
+                                                        <div className="progress-bar-fill" style={{ width: `${pct}%` }} />
+                                                    </div>
+                                                    <span className="progress-label">
+                                                        {total === 0 ? 'No sections yet' : `${evaluated}/${total} evaluated · ${pct}%`}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
                                 );
                             })}
@@ -497,10 +580,17 @@ const ProjectSelection = ({ user, onSelectProject }) => {
 
                             {hasAssignedTrips && filteredProjects.length === 0 && (
                                 <div className="col-span-full flex flex-col items-center justify-center p-12 text-center">
-                                    <FolderOpen size={48} className="text-[hsl(var(--muted-foreground))] mb-4 opacity-50" />
-                                    <p className="text-[hsl(var(--muted-foreground))]">
-                                        No trips match your search.
-                                    </p>
+                                    {activeTab === 'completed' ? (
+                                        <>
+                                            <CheckCheck size={48} className="text-[hsl(var(--muted-foreground))] mb-4 opacity-50" />
+                                            <p className="text-[hsl(var(--muted-foreground))]">No completed trips yet. Mark a trip as complete using the ✓✓ button on the card.</p>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <FolderOpen size={48} className="text-[hsl(var(--muted-foreground))] mb-4 opacity-50" />
+                                            <p className="text-[hsl(var(--muted-foreground))]">No trips match your search.</p>
+                                        </>
+                                    )}
                                 </div>
                             )}
                         </div>

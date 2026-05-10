@@ -70,7 +70,8 @@ export const printSections = async (sections, username) => {
                         <td><strong>City:</strong> ${section.city || 'N/A'}, ${section.county || 'N/A'}</td>
                     </tr>
                     <tr>
-                        <td><strong>GPS:</strong> ${section.coordinates || 'N/A'}</td>
+                        <td><strong>Start Coords:</strong> ${section.coordinates || 'N/A'}</td>
+                        ${section.endCoordinates ? `<td><strong>End Coords:</strong> ${section.endCoordinates}</td>` : ''}
                     </tr>
                 </table>
                 <h2>Activity & Notes</h2>

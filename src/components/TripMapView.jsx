@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
-import { ArrowLeft, MapPin, Navigation, CheckCircle, Clock, ExternalLink, Building2, Route, Home, Hash, Trash2, Save, Landmark, Calendar, Plus, X, ChevronDown, ChevronUp, Eye, EyeOff, Printer, Download, FileSpreadsheet, Zap, RotateCcw, ListOrdered, ArrowDown } from 'lucide-react';
+import { ArrowLeft, MapPin, Navigation, CheckCircle, Clock, ExternalLink, Building2, Route, Home, Hash, Trash2, Save, Landmark, Calendar, Plus, X, ChevronDown, ChevronUp, Eye, EyeOff, Printer, Download, FileSpreadsheet, Zap, RotateCcw, ListOrdered, ArrowDown, Check } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -426,6 +426,30 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
     // Days Plan State
     const [showDaysPlan, setShowDaysPlan] = useState(false);
     const [daysPlan, setDaysPlan] = useState([]); // [{ day: 1, sequences: [1, 2, 3] }]
+    const [minutesPerStop, setMinutesPerStop] = useState(project?.minutesPerStop || 15); // Draft input value
+    const [appliedMinutesPerStop, setAppliedMinutesPerStop] = useState(project?.minutesPerStop || 15); // Applied value used in calculations
+    const [justApplied, setJustApplied] = useState(false); // Visual feedback flag
+
+    useEffect(() => {
+        if (project?.minutesPerStop) {
+            setMinutesPerStop(project.minutesPerStop);
+            setAppliedMinutesPerStop(project.minutesPerStop);
+        }
+    }, [project?.minutesPerStop]);
+
+    const handleApplyMinutes = async () => {
+        setAppliedMinutesPerStop(minutesPerStop);
+        setJustApplied(true);
+        setTimeout(() => setJustApplied(false), 2000);
+        if (isAdmin && projectId) {
+            try {
+                await updateProject(projectId, { minutesPerStop }, username);
+                if (onUpdateProject) onUpdateProject();
+            } catch(e) {
+                console.error("Error saving minutesPerStop:", e);
+            }
+        }
+    };
     const [expandedDay, setExpandedDay] = useState(null);
     const [highlightedDays, setHighlightedDays] = useState(new Set()); // Set of day numbers
     const [showAllDays, setShowAllDays] = useState(false);
@@ -518,10 +542,10 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
             // Weight = minutes
             const getSectionWeight = (sec, prevCoord) => {
                 const coords = parseCoords(sec.coordinates);
-                if (!coords || !prevCoord) return 15; // Just stop time
+                if (!coords || !prevCoord) return appliedMinutesPerStop; // Just stop time
                 const miles = calculateDistance(prevCoord, coords);
                 const driveMin = (miles * 1.2 / 65) * 60;
-                return driveMin + 15; // Drive + 15m stop
+                return driveMin + appliedMinutesPerStop; // Drive + applied stop time
             };
 
             let totalWeight = 0;
@@ -892,7 +916,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                 if (realDriveMinutes != null) {
                     // OSRM gave us actual road time — just add stop time
                     drivingMinutes = realDriveMinutes;
-                    stopMinutes = daySections.length * 15;
+                    stopMinutes = daySections.length * appliedMinutesPerStop;
                     totalTime = Math.round(drivingMinutes + stopMinutes);
 
                     // Still compute straight-line miles for display
@@ -923,7 +947,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
 
                     // Mark as loading heavily
                     drivingMinutes = null;
-                    stopMinutes = daySections.length * 15;
+                    stopMinutes = daySections.length * appliedMinutesPerStop;
                     totalTime = 0;
                 }
 
@@ -954,7 +978,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
         });
 
         return stats;
-    }, [daysPlan, sections, homePosition, dayDriveMinutes, dayRouteErrors]);
+    }, [daysPlan, sections, homePosition, dayDriveMinutes, dayRouteErrors, appliedMinutesPerStop]);
 
     const getEstimatedTime = (day) => {
         return dayStats[day.day]?.timeStr || "0h 0m";
@@ -1362,7 +1386,60 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                         {routeLoading && ' • Loading route...'}
                     </span>
                 </div>
-                <div className="relative" style={{ marginLeft: 'auto' }}>
+
+                {/* Min/stop time control — always visible in header */}
+                <div style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    marginLeft: 'auto',
+                    padding: '0 10px',
+                    borderLeft: '1px solid hsl(var(--border) / 0.5)',
+                    borderRight: '1px solid hsl(var(--border) / 0.5)'
+                }}>
+                    <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'hsl(var(--muted-foreground))', whiteSpace: 'nowrap', letterSpacing: '0.03em' }}>
+                        min/stop
+                    </label>
+                    <input
+                        type="number"
+                        min="1"
+                        max="480"
+                        value={minutesPerStop}
+                        onChange={(e) => {
+                            const val = parseInt(e.target.value, 10);
+                            if (!isNaN(val) && val > 0) setMinutesPerStop(val);
+                        }}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                handleApplyMinutes();
+                            }
+                        }}
+                        style={{
+                            width: '50px', padding: '4px 6px', fontSize: '0.82rem',
+                            borderRadius: '6px',
+                            border: `1.5px solid ${minutesPerStop !== appliedMinutesPerStop ? 'hsl(var(--primary))' : 'hsl(var(--border))'}`,
+                            background: 'hsl(var(--background))',
+                            color: 'hsl(var(--foreground))',
+                            textAlign: 'center', outline: 'none'
+                        }}
+                        title="Minutes spent at each stop. Press Enter or click Apply."
+                    />
+                    <button
+                        onClick={handleApplyMinutes}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: '4px',
+                            padding: '4px 8px', borderRadius: '6px', border: 'none',
+                            cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
+                            transition: 'all 0.2s',
+                            background: justApplied ? '#22c55e' : (minutesPerStop !== appliedMinutesPerStop ? 'hsl(var(--primary))' : 'hsl(var(--muted) / 0.4)'),
+                            color: justApplied || minutesPerStop !== appliedMinutesPerStop ? '#fff' : 'hsl(var(--muted-foreground))'
+                        }}
+                        title="Apply stop time to estimates and optimization"
+                    >
+                        <Check size={13} />
+                        {justApplied ? 'Applied!' : 'Apply'}
+                    </button>
+                </div>
+
+                <div className="relative">
                     <button
                         onClick={() => setShowExportMenu(!showExportMenu)}
                         className="btn btn-ghost"
@@ -1830,7 +1907,14 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                                         />
 
                                         {section.coordinates && (
-                                            <div className="popup-coords">{section.coordinates}</div>
+                                            <div className="popup-coords">
+                                                <span style={{fontSize:'0.6rem', opacity:0.7}}>START </span>{section.coordinates}
+                                            </div>
+                                        )}
+                                        {section.endCoordinates && (
+                                            <div className="popup-coords">
+                                                <span style={{fontSize:'0.6rem', opacity:0.7}}>END </span>{section.endCoordinates}
+                                            </div>
                                         )}
                                         <div className="popup-actions">
                                             <button
@@ -1842,17 +1926,23 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                                             >
                                                 View Details →
                                             </button>
-                                            {section.coordinates && (
-                                                <a
-                                                    className="popup-gmaps-link"
-                                                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(section.coordinates)}`}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                >
-                                                    <ExternalLink size={12} />
-                                                    Google Maps
-                                                </a>
-                                            )}
+                                            {section.coordinates && (() => {
+                                                const mapsUrl = section.endCoordinates
+                                                    ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(section.coordinates)}&destination=${encodeURIComponent(section.endCoordinates)}`
+                                                    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(section.coordinates)}`;
+                                                return (
+                                                    <a
+                                                        className="popup-gmaps-link"
+                                                        href={mapsUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        title={section.endCoordinates ? 'View section extent in Google Maps' : 'View in Google Maps'}
+                                                    >
+                                                        <ExternalLink size={12} />
+                                                        {section.endCoordinates ? 'Maps (Start→End)' : 'Google Maps'}
+                                                    </a>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 </Popup>
