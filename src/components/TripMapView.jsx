@@ -1634,20 +1634,34 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                                         className="day-color-dot"
                                         style={{ background: CATEGORY_COLORS[(day.day - 1) % CATEGORY_COLORS.length] }}
                                     />
-                                    <div className="flex flex-col flex-1 overflow-hidden">
-                                        <span className="font-bold truncate flex items-center gap-2">
+                                    <div className="flex flex-col flex-1 overflow-hidden gap-1 py-1">
+                                        <span className="font-bold" style={{ fontSize: '1.05rem', lineHeight: '1.2' }}>
                                             Day {day.day}
+                                        </span>
+                                        <div>
                                             <input 
                                                 type="date" 
                                                 value={day.date || ''} 
                                                 onChange={(e) => handleDateChange(day.day, e.target.value)}
                                                 onClick={(e) => e.stopPropagation()}
-                                                className="bg-transparent border border-[hsl(var(--border))] rounded px-1 text-xs text-muted-foreground focus:outline-none"
-                                                style={{ maxWidth: '110px' }}
+                                                style={{ 
+                                                    background: 'transparent',
+                                                    border: '1px solid hsl(var(--border))',
+                                                    color: day.date ? 'hsl(var(--foreground))' : 'hsl(var(--muted-foreground))',
+                                                    borderRadius: '4px',
+                                                    padding: '2px 6px',
+                                                    fontSize: '0.75rem',
+                                                    outline: 'none',
+                                                    cursor: 'pointer',
+                                                    colorScheme: isDarkTiles ? 'dark' : 'light',
+                                                    transition: 'all 0.2s'
+                                                }}
+                                                onFocus={(e) => e.target.style.borderColor = 'hsl(var(--primary))'}
+                                                onBlur={(e) => e.target.style.borderColor = 'hsl(var(--border))'}
                                                 title="Assign a date to this day"
                                             />
-                                        </span>
-                                        <span className="text-xs text-muted flex flex-col sm:flex-row sm:gap-2">
+                                        </div>
+                                        <span className="text-xs text-muted flex flex-col sm:flex-row sm:gap-2 mt-0.5">
                                             {dayStats[day.day]?.isError ? (
                                                 <span className="text-rose-500 flex items-center gap-1">
                                                     <Navigation size={10} /> Road route unavailable
