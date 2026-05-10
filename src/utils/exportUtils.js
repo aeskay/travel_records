@@ -7,7 +7,7 @@ import { getDetails } from '../db';
  * @param {string} username - Current username for fetching details
  * @param {Function} showAlert - Optional callback for showing alerts
  */
-export const exportToExcel = async (sections, username, showAlert) => {
+export const exportToExcel = async (sections, username, showAlert, daysPlan = []) => {
     console.log("Starting Excel export for", sections.length, "sections");
     try {
         // Ensure sections is always an array
@@ -17,10 +17,19 @@ export const exportToExcel = async (sections, username, showAlert) => {
         // We will create two sheets: "Sections" and "Notes"
 
         // Sheet 1: Sections
-        const sectionsData = sectionList.map(s => ({
-            ID: s.id,
-            Type: s.type || 'Uncategorized',
-            Status: s.status || 'Pending',
+        const sectionsData = sectionList.map(s => {
+            // Find which day this section belongs to
+            const dayObj = daysPlan.find(d => d.sequences?.includes(Number(s.test_sequence)));
+            const dayNum = dayObj ? `Day ${dayObj.day}` : '';
+            const dayDate = dayObj?.date ? new Date(dayObj.date).toLocaleDateString() : '';
+
+            return {
+                ID: s.id,
+                'Test Sequence': s.test_sequence || '',
+                Day: dayNum,
+                Date: dayDate,
+                Type: s.type || 'Uncategorized',
+                Status: s.status || 'Pending',
             Highway: s.highway || '',
             District: s.district || '',
             City: s.city || '',
@@ -30,7 +39,8 @@ export const exportToExcel = async (sections, username, showAlert) => {
             'Evaluated At': s.evaluatedAt ? new Date(s.evaluatedAt).toLocaleString() : '',
             'Last Modified': s.lastModified ? new Date(s.lastModified).toLocaleString() : '',
             'Modified By': s.lastModifiedBy || ''
-        }));
+        };
+    });
 
         console.log("Prepared section data");
 

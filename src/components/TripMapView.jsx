@@ -778,6 +778,15 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
             setOptimizingDay(null);
         }
     };
+
+    const handleDateChange = (dayNum, newDate) => {
+        const newDaysPlan = daysPlan.map(d => {
+            if (d.day === dayNum) return { ...d, date: newDate };
+            return d;
+        });
+        setDaysPlan(newDaysPlan);
+    };
+
     const [isLegendOpen, setIsLegendOpen] = useState(true); // Default open on desktop, will override with CSS for mobile if needed, or check width
 
     const [isPlanLoaded, setIsPlanLoaded] = useState(false);
@@ -1302,7 +1311,8 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
             doc.setFontSize(14);
             doc.setTextColor(0);
             const estTime = getEstimatedTime(day);
-            doc.text(`Day ${day.day} (${estTime})`, 14, finalY);
+            const dateStr = day.date ? ` - ${new Date(day.date).toLocaleDateString()}` : '';
+            doc.text(`Day ${day.day}${dateStr} (${estTime})`, 14, finalY);
             finalY += 10;
 
             // Get stops
@@ -1325,20 +1335,22 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                     s.district || '',
                     s.county || '',
                     s.city || '',
-                    s.coordinates || ''
+                    s.coordinates || '',
+                    s.endCoordinates || ''
                 ]);
 
                 autoTable(doc, {
                     startY: finalY,
-                    head: [['Seq', 'ID', 'Type', 'Hwy', 'Dist', 'County', 'City', 'Coords']],
+                    head: [['Seq', 'ID', 'Type', 'Hwy', 'Dist', 'County', 'City', 'Start Coords', 'End Coords']],
                     body: tableBody,
                     theme: 'grid',
                     headStyles: { fillColor: [59, 130, 246] },
                     styles: { fontSize: 8, cellPadding: 2, overflow: 'linebreak' },
                     columnStyles: {
                         0: { cellWidth: 10 },
-                        1: { cellWidth: 20 },
-                        7: { cellWidth: 35 }
+                        1: { cellWidth: 15 },
+                        7: { cellWidth: 30 },
+                        8: { cellWidth: 30 }
                     },
                     margin: { top: 20 },
                 });
@@ -1453,7 +1465,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                                 onClick={() => {
                                     // Export the ordered sections that are part of the route
                                     const sectionsToExport = orderedRouteSections.length > 0 ? orderedRouteSections : sections;
-                                    exportToExcel(sectionsToExport, username, showAlert);
+                                    exportToExcel(sectionsToExport, username, showAlert, daysPlan);
                                     setShowExportMenu(false);
                                 }}
                                 className="btn btn-ghost justify-start text-xs px-2 py-2 h-auto text-left"
@@ -1623,8 +1635,17 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                                         style={{ background: CATEGORY_COLORS[(day.day - 1) % CATEGORY_COLORS.length] }}
                                     />
                                     <div className="flex flex-col flex-1 overflow-hidden">
-                                        <span className="font-bold truncate">
+                                        <span className="font-bold truncate flex items-center gap-2">
                                             Day {day.day}
+                                            <input 
+                                                type="date" 
+                                                value={day.date || ''} 
+                                                onChange={(e) => handleDateChange(day.day, e.target.value)}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="bg-transparent border border-[hsl(var(--border))] rounded px-1 text-xs text-muted-foreground focus:outline-none"
+                                                style={{ maxWidth: '110px' }}
+                                                title="Assign a date to this day"
+                                            />
                                         </span>
                                         <span className="text-xs text-muted flex flex-col sm:flex-row sm:gap-2">
                                             {dayStats[day.day]?.isError ? (
