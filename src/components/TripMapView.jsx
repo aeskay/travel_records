@@ -482,26 +482,19 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                 return;
             }
 
-            // 2. Snapshot for Revert (if not already existing)
-            // We need to know which Day each section belongs to currently.
+            // 2. Snapshot for Revert (always snapshot the current state to allow undoing this specific optimization)
             const updates = [];
             const snapshotSections = allAssignedSections.map(s => {
                 const currentDayObj = daysPlan.find(d => d.sequences.includes(Number(s.test_sequence)));
                 const currentDay = currentDayObj ? currentDayObj.day : null;
 
                 const update = { ...s };
-                let modified = false;
-
-                if (!s.original_day && currentDay) {
+                
+                if (currentDay) {
                     update.original_day = currentDay;
-                    modified = true;
-                }
-                if (!s.original_sequence) {
                     update.original_sequence = s.test_sequence;
-                    modified = true;
+                    updates.push(update);
                 }
-
-                if (modified) updates.push(update);
                 return update; // Return the version with originals set for processing
             });
 
@@ -682,7 +675,6 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
             if (daySections.length === 0) return;
 
             const sectionsToOptimize = [...daySections];
-            const hasOriginal = sectionsToOptimize.some(s => s.original_sequence);
 
             // Determine start position
             let currentPos = homePosition;
@@ -737,12 +729,11 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
             // Assign new sequence numbers based on existing set
             const sequenceNums = sectionsToOptimize.map(s => Number(s.test_sequence)).sort((a, b) => a - b);
             const updates = sorted.map((s, idx) => {
-                const update = { ...s, test_sequence: String(sequenceNums[idx]) };
-                // Only save original if not already saved (preserves first manual state)
-                if (!hasOriginal) {
-                    update.original_sequence = s.test_sequence;
-                }
-                return update;
+                return {
+                    ...s,
+                    test_sequence: String(sequenceNums[idx]),
+                    original_sequence: s.test_sequence // Always snapshot the state right before THIS optimization
+                };
             });
 
             await onUpdateSections(updates);
