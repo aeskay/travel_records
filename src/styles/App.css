@@ -1856,12 +1856,12 @@ select.input option {
 
     .days-plan-panel {
         position: fixed;
-        top: 60px;
+        top: 120px;
         bottom: 1rem;
         left: 1rem;
         right: 1rem;
         width: auto;
-        max-height: calc(100dvh - 80px);
+        max-height: calc(100dvh - 140px);
         height: auto;
         display: flex;
         flex-direction: column;
