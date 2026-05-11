@@ -1856,16 +1856,16 @@ select.input option {
 
     .days-plan-panel {
         position: fixed;
-        top: 120px;
+        top: 70px;
         bottom: 1rem;
         left: 1rem;
         right: 1rem;
         width: auto;
-        max-height: calc(100dvh - 140px);
+        max-height: calc(100dvh - 90px);
         height: auto;
         display: flex;
         flex-direction: column;
-        z-index: 2000;
+        z-index: 2100;
         background: hsl(var(--card));
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
         overflow: hidden;
