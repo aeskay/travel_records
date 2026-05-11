@@ -581,16 +581,20 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                 return driveMin + appliedMinutesPerStop; // Drive + applied stop time
             };
 
-            let totalWeight = 0;
-            let simPos = startPosition;
-            for (const sec of grandTour) {
+            // Pre-calculate weights for all sections in the grand tour
+            let tempPos = startPosition;
+            const secWeights = grandTour.map(sec => {
+                const w = getSectionWeight(sec, tempPos);
                 const coords = parseCoords(sec.coordinates);
-                totalWeight += getSectionWeight(sec, simPos);
-                if (coords) simPos = coords;
+                if (coords) tempPos = coords;
+                return w;
+            });
+            // Add return home to the very last weight to account for the total trip duration
+            if (secWeights.length > 0) {
+                secWeights[secWeights.length - 1] += (calculateDistance(tempPos, endPosition) * 1.2 / 65) * 60;
             }
-            // Add return to end weight (approx)
-            totalWeight += (calculateDistance(simPos, endPosition) * 1.2 / 65) * 60;
 
+            const totalWeight = secWeights.reduce((sum, w) => sum + w, 0);
             const numDays = daysPlan.length;
             const targetWeightPerDay = totalWeight / numDays;
 
@@ -598,22 +602,17 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
             const finalUpdates = [...updates]; // Start with snapshot updates
 
             let currentDayIdx = 0;
-            let currentDayWeight = 0;
-            let tourPos = startPosition;
+            let cumulativeWeight = 0;
 
             grandTour.forEach((sec, idx) => {
-                // If we exceeded target and not on last day, switch
-                // But ensure at least one stop per day if possible?
-                // Also look ahead? Simple Greedy Partition:
-
-                const weight = getSectionWeight(sec, tourPos);
-
-                // If adding this weight pushes us significantly over target, AND we have next days
-                // thresholds can be fuzzy. Let's aim to fill Day 1 to target, then Day 2...
-                if (currentDayIdx < numDays - 1 && (currentDayWeight + weight > targetWeightPerDay * 1.05)) {
-                    // Switch to next day
-                    currentDayIdx++;
-                    currentDayWeight = 0;
+                // Check if we should move to the next day BEFORE assigning
+                // If adding HALF of this section's weight crosses the target cumulative threshold, switch!
+                const targetCumWeight = (currentDayIdx + 1) * targetWeightPerDay;
+                if (currentDayIdx < numDays - 1 && cumulativeWeight + (secWeights[idx] / 2) > targetCumWeight) {
+                    // Only advance if the current day has at least one stop
+                    if (newDaysPlan[currentDayIdx].sequences.length > 0) {
+                        currentDayIdx++;
+                    }
                 }
 
                 const dayNum = newDaysPlan[currentDayIdx].day;
@@ -623,7 +622,6 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                 newDaysPlan[currentDayIdx].sequences.push(newSeq);
 
                 // Update section with NEW sequence
-                // Check if we already have an update for this section in 'updates'
                 const existingUpdateIdx = finalUpdates.findIndex(u => u.id === sec.id);
                 if (existingUpdateIdx !== -1) {
                     finalUpdates[existingUpdateIdx].test_sequence = String(newSeq);
@@ -631,9 +629,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                     finalUpdates.push({ ...sec, test_sequence: String(newSeq) });
                 }
 
-                currentDayWeight += weight;
-                const coords = parseCoords(sec.coordinates);
-                if (coords) tourPos = coords;
+                cumulativeWeight += secWeights[idx];
             });
 
             // 5. Apply Updates
