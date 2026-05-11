@@ -1434,6 +1434,16 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                     </span>
                 </div>
 
+                {/* Trip Locations */}
+                <div style={{ display: 'flex', gap: '8px', marginLeft: '12px' }}>
+                    <div className="badge badge-outline cursor-pointer hover:bg-base-200" onClick={openEditStart} title="Edit Start Location" style={{ padding: '8px 12px', height: 'auto' }}>
+                        <MapPin size={12} className="text-green-500 mr-1" /> Start: {startName} {isAdmin && <Edit2 size={10} className="ml-1 opacity-50" />}
+                    </div>
+                    <div className="badge badge-outline cursor-pointer hover:bg-base-200" onClick={openEditEnd} title="Edit End Location" style={{ padding: '8px 12px', height: 'auto' }}>
+                        <Flag size={12} className="text-red-500 mr-1" /> End: {endName} {isAdmin && <Edit2 size={10} className="ml-1 opacity-50" />}
+                    </div>
+                </div>
+
                 {/* Min/stop time control — always visible in header */}
                 <div style={{
                     display: 'flex', alignItems: 'center', gap: '6px',
