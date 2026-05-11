@@ -499,6 +499,10 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
     const [optimizingDay, setOptimizingDay] = useState(null);
     const [isGlobalOptimizing, setIsGlobalOptimizing] = useState(false);
 
+    // In-memory snapshot for undo — stores { daysPlan, sections } before last optimize
+    const optimizeSnapshot = useRef(null);
+    const [hasOptimizeSnapshot, setHasOptimizeSnapshot] = useState(false);
+
     // Routing Cache and Locks
     const routingCache = useRef(new Map()); // dayNum (or 'main') -> stringifiedWaypoints
     const isRoutingBusy = useRef(false);
@@ -512,34 +516,27 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
 
         setIsGlobalOptimizing(true);
         try {
-            // 1. Gather all assigned sections
-            const allAssignedSections = sections.filter(s =>
-                daysPlan.some(d => d.sequences.includes(Number(s.test_sequence)))
-            );
+            // 1. Gather ALL sections that are part of the route (have a test_sequence number)
+            // This intentionally includes sections NOT yet assigned to any specific day,
+            // so the optimization can distribute them all evenly across all days.
+            const allAssignedSections = sections
+                .filter(s => s.test_sequence && String(s.test_sequence).trim() !== '')
+                .sort((a, b) => Number(a.test_sequence) - Number(b.test_sequence));
 
             if (allAssignedSections.length === 0) {
                 showAlert("No stops assigned to any days.");
                 return;
             }
 
-            // 2. Snapshot for Revert (always snapshot the current state to allow undoing this specific optimization)
-            const updates = [];
-            const snapshotSections = allAssignedSections.map(s => {
-                const currentDayObj = daysPlan.find(d => d.sequences.includes(Number(s.test_sequence)));
-                const currentDay = currentDayObj ? currentDayObj.day : null;
+            // 2. Save in-memory snapshot of current state for undo
+            optimizeSnapshot.current = {
+                daysPlan: daysPlan.map(d => ({ ...d, sequences: [...d.sequences] })),
+                sections: allAssignedSections.map(s => ({ docId: s.docId, test_sequence: s.test_sequence }))
+            };
+            setHasOptimizeSnapshot(true);
 
-                const update = { ...s };
-                
-                if (currentDay) {
-                    update.original_day = currentDay;
-                    update.original_sequence = s.test_sequence;
-                    updates.push(update);
-                }
-                return update; // Return the version with originals set for processing
-            });
-
-            // 3. Grand Tour (Nearest Neighbor)
-            let unvisited = [...snapshotSections];
+            // 3. Grand Tour (Nearest Neighbor) — sort all sections into optimal travel order
+            let unvisited = [...allAssignedSections];
             let currentPos = startPosition;
             const grandTour = [];
 
@@ -564,24 +561,20 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                     const nextCoords = parseCoords(next.coordinates);
                     if (nextCoords) currentPos = nextCoords;
                 } else {
-                    // Fallback for invalid coords
                     grandTour.push(...unvisited);
                     break;
                 }
             }
 
-            // 4. Partition into Days
-            // Calculate total weight (Drive Time + Stop Time)
-            // Weight = minutes
+            // 4. Calculate per-section travel weight (drive time + stop time in minutes)
             const getSectionWeight = (sec, prevCoord) => {
                 const coords = parseCoords(sec.coordinates);
-                if (!coords || !prevCoord) return appliedMinutesPerStop; // Just stop time
+                if (!coords || !prevCoord) return appliedMinutesPerStop;
                 const miles = calculateDistance(prevCoord, coords);
                 const driveMin = (miles * 1.2 / 65) * 60;
-                return driveMin + appliedMinutesPerStop; // Drive + applied stop time
+                return driveMin + appliedMinutesPerStop;
             };
 
-            // Pre-calculate weights for all sections in the grand tour
             let tempPos = startPosition;
             const secWeights = grandTour.map(sec => {
                 const w = getSectionWeight(sec, tempPos);
@@ -589,52 +582,42 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                 if (coords) tempPos = coords;
                 return w;
             });
-            // Add return home to the very last weight to account for the total trip duration
-            if (secWeights.length > 0) {
-                secWeights[secWeights.length - 1] += (calculateDistance(tempPos, endPosition) * 1.2 / 65) * 60;
-            }
 
             const totalWeight = secWeights.reduce((sum, w) => sum + w, 0);
             const numDays = daysPlan.length;
             const targetWeightPerDay = totalWeight / numDays;
 
+            // 5. Partition: assign sections to days evenly by cumulative weight
             const newDaysPlan = daysPlan.map(d => ({ ...d, sequences: [] }));
-            const finalUpdates = [...updates]; // Start with snapshot updates
-
             let currentDayIdx = 0;
             let cumulativeWeight = 0;
 
             grandTour.forEach((sec, idx) => {
-                // Check if we should move to the next day BEFORE assigning
-                // If adding HALF of this section's weight crosses the target cumulative threshold, switch!
-                const targetCumWeight = (currentDayIdx + 1) * targetWeightPerDay;
-                if (currentDayIdx < numDays - 1 && cumulativeWeight + (secWeights[idx] / 2) > targetCumWeight) {
-                    // Only advance if the current day has at least one stop
-                    if (newDaysPlan[currentDayIdx].sequences.length > 0) {
-                        currentDayIdx++;
-                    }
+                // Advance to next day if we've filled this one, but always leave at least 1 stop per day
+                while (
+                    currentDayIdx < numDays - 1 &&
+                    newDaysPlan[currentDayIdx].sequences.length > 0 &&
+                    cumulativeWeight + (secWeights[idx] / 2) > (currentDayIdx + 1) * targetWeightPerDay
+                ) {
+                    currentDayIdx++;
                 }
 
-                const dayNum = newDaysPlan[currentDayIdx].day;
-                const newSeq = idx + 1; // Continuous numbering 1, 2, 3...
-
-                // Assign to new day
+                const newSeq = idx + 1; // Simple sequential numbering: 1, 2, 3...
                 newDaysPlan[currentDayIdx].sequences.push(newSeq);
-
-                // Update section with NEW sequence
-                const existingUpdateIdx = finalUpdates.findIndex(u => u.id === sec.id);
-                if (existingUpdateIdx !== -1) {
-                    finalUpdates[existingUpdateIdx].test_sequence = String(newSeq);
-                } else {
-                    finalUpdates.push({ ...sec, test_sequence: String(newSeq) });
-                }
-
                 cumulativeWeight += secWeights[idx];
             });
 
-            // 5. Apply Updates
-            await onUpdateSections(finalUpdates);
-            setDaysPlan(newDaysPlan); // Triggers save effect
+            // 6. Build section updates — assign new sequential numbers to sections in grandTour order
+            const sectionUpdates = grandTour.map((sec, idx) => ({
+                ...sec,
+                test_sequence: String(idx + 1),
+            }));
+
+            // 7. Apply
+            await onUpdateSections(sectionUpdates);
+            setDaysPlan(newDaysPlan);
+            // Force save immediately (don't rely on debounce)
+            await saveSharedDaysPlan(projectId, newDaysPlan);
 
         } catch (error) {
             console.error("Global Optimize failed:", error);
@@ -646,50 +629,33 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
 
     const handleGlobalRevert = async () => {
         if (!isAdmin || !onUpdateSections) return;
-        if (!await showConfirm("Revert ALL stops to their original days and sequences?")) return;
+        if (!optimizeSnapshot.current) {
+            showAlert("Nothing to undo — no optimization has been run yet.");
+            return;
+        }
+        if (!await showConfirm("Undo the last Global Optimization? This will restore the previous arrangement.")) return;
 
         setIsGlobalOptimizing(true);
         try {
-            // Find sections with original_day
-            const sectionsToRevert = sections.filter(s => s.original_day && s.original_sequence);
+            const { daysPlan: prevDaysPlan, sections: prevSections } = optimizeSnapshot.current;
 
-            if (sectionsToRevert.length === 0) {
-                showAlert("No snapshot found to revert.");
-                return;
-            }
+            // Restore section sequences from snapshot
+            const sectionUpdates = prevSections.map(snap => {
+                const fullSection = sections.find(s => s.docId === snap.docId);
+                if (!fullSection) return null;
+                return { ...fullSection, test_sequence: snap.test_sequence };
+            }).filter(Boolean);
 
-            // Reconstruct Days Plan
-            const newDaysPlan = daysPlan.map(d => ({ ...d, sequences: [] }));
-            const updates = [];
+            await onUpdateSections(sectionUpdates);
+            setDaysPlan(prevDaysPlan);
 
-            sectionsToRevert.forEach(s => {
-                const dayNum = s.original_day;
-                const seq = Number(s.original_sequence);
-
-                // Find day object
-                const dayObj = newDaysPlan.find(d => d.day === dayNum);
-                if (dayObj) {
-                    dayObj.sequences.push(seq);
-                } else {
-                    // Day might have been deleted? Or plan changed?
-                    // Safe fallback: Add to First Day? Or create day?
-                    // Assuming structure matches.
-                }
-
-                updates.push({
-                    ...s,
-                    test_sequence: s.original_sequence,
-                    original_day: null, // Clear snapshot
-                    original_sequence: null
-                });
-            });
-
-            await onUpdateSections(updates);
-            setDaysPlan(newDaysPlan);
+            // Clear snapshot so you can't undo twice
+            optimizeSnapshot.current = null;
+            setHasOptimizeSnapshot(false);
 
         } catch (error) {
             console.error("Global Revert failed:", error);
-            alert(`Global Revert failed: ${error.message}`);
+            showAlert(`Undo failed: ${error.message}`);
         } finally {
             setIsGlobalOptimizing(false);
         }
@@ -1651,11 +1617,11 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                                     >
                                         {isGlobalOptimizing ? <span className="loading loading-spinner loading-xs"></span> : <Zap size={16} />}
                                     </button>
-                                    {sections.some(s => s.original_day) && (
+                                    {hasOptimizeSnapshot && (
                                         <button
                                             onClick={handleGlobalRevert}
                                             className="btn-icon text-warning hover:bg-warning/10"
-                                            title="Global Revert"
+                                            title="Undo Last Optimization"
                                             disabled={isGlobalOptimizing}
                                         >
                                             <RotateCcw size={16} />
