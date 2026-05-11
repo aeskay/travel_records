@@ -617,7 +617,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                 }
 
                 const dayNum = newDaysPlan[currentDayIdx].day;
-                const newSeq = (currentDayIdx * 1000) + (newDaysPlan[currentDayIdx].sequences.length + 1); // e.g. 1001, 1002, 2001...
+                const newSeq = idx + 1; // Continuous numbering 1, 2, 3...
 
                 // Assign to new day
                 newDaysPlan[currentDayIdx].sequences.push(newSeq);
