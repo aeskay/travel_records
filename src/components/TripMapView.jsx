@@ -49,12 +49,28 @@ const createSequenceIcon = (number, color, borderColor) => {
     });
 };
 
-const homeIcon = L.divIcon({
+const startIcon = L.divIcon({
     className: 'custom-map-marker',
-    html: `<div class="home-marker">🏠</div>`,
-    iconSize: [32, 32],
-    iconAnchor: [16, 16],
-    popupAnchor: [0, -20],
+    html: `<div class="sequence-marker" style="
+        background: #22c55e;
+        border: 2px solid #16a34a;
+        box-shadow: 0 0 8px #22c55eaa, 0 2px 6px rgba(0,0,0,0.4);
+    ">A</div>`,
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+    popupAnchor: [0, -16],
+});
+
+const endIcon = L.divIcon({
+    className: 'custom-map-marker',
+    html: `<div class="sequence-marker" style="
+        background: #ef4444;
+        border: 2px solid #dc2626;
+        box-shadow: 0 0 8px #ef4444aa, 0 2px 6px rgba(0,0,0,0.4);
+    ">B</div>`,
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+    popupAnchor: [0, -16],
 });
 
 const evaluatedIcon = createMarkerIcon('#22c55e', '#911f13ff');
@@ -354,69 +370,93 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
     const [routeLoading, setRouteLoading] = useState(false);
     const [showExportMenu, setShowExportMenu] = useState(false);
 
-    // Home Location State
-    const [homePosition, setHomePosition] = useState(DEFAULT_HOME_POSITION);
-    const [homeName, setHomeName] = useState('Texas Tech');
-    const [isEditingHome, setIsEditingHome] = useState(false);
+    // Start & End Location State
+    const [startPosition, setStartPosition] = useState(DEFAULT_HOME_POSITION);
+    const [startName, setStartName] = useState('Texas Tech');
+    const [isEditingStart, setIsEditingStart] = useState(false);
 
-    // Derived Home Location from Project
+    const [endPosition, setEndPosition] = useState(DEFAULT_HOME_POSITION);
+    const [endName, setEndName] = useState('Texas Tech');
+    const [isEditingEnd, setIsEditingEnd] = useState(false);
+
+    // Derived Locations from Project
     useEffect(() => {
-        if (project?.homeLocation) {
-            const coords = parseCoords(project.homeLocation.coordinates);
-            if (coords) {
-                setHomePosition(coords);
+        if (project) {
+            // Start Location
+            const sLoc = project.startLocation || project.homeLocation;
+            if (sLoc) {
+                const coords = parseCoords(sLoc.coordinates);
+                if (coords) setStartPosition(coords);
+                if (sLoc.name) setStartName(sLoc.name);
+            } else {
+                setStartPosition(DEFAULT_HOME_POSITION);
+                setStartName('Texas Tech');
             }
-            if (project.homeLocation.name) {
-                setHomeName(project.homeLocation.name);
+
+            // End Location
+            const eLoc = project.endLocation || project.homeLocation;
+            if (eLoc) {
+                const coords = parseCoords(eLoc.coordinates);
+                if (coords) setEndPosition(coords);
+                if (eLoc.name) setEndName(eLoc.name);
+            } else {
+                setEndPosition(DEFAULT_HOME_POSITION);
+                setEndName('Texas Tech');
             }
-        } else {
-            setHomePosition(DEFAULT_HOME_POSITION);
-            setHomeName('Texas Tech');
         }
     }, [project]);
 
-    // Edit Home Form State
-    const [editHomeName, setEditHomeName] = useState('');
-    const [editHomeCoords, setEditHomeCoords] = useState('');
-    const [savingHome, setSavingHome] = useState(false);
+    // Edit Start/End Form State
+    const [editLocName, setEditLocName] = useState('');
+    const [editLocCoords, setEditLocCoords] = useState('');
+    const [savingLoc, setSavingLoc] = useState(false);
 
-    const openEditHome = () => {
+    const openEditStart = () => {
         if (!isAdmin) return;
-        setEditHomeName(homeName);
-        setEditHomeCoords(homePosition.join(', '));
-        setIsEditingHome(true);
+        setEditLocName(startName);
+        setEditLocCoords(startPosition.join(', '));
+        setIsEditingStart(true);
     };
 
-    const handleSaveHome = async () => {
+    const openEditEnd = () => {
+        if (!isAdmin) return;
+        setEditLocName(endName);
+        setEditLocCoords(endPosition.join(', '));
+        setIsEditingEnd(true);
+    };
+
+    const handleSaveLocation = async (type) => {
         if (!isAdmin || !projectId) return;
-        const coords = parseCoords(editHomeCoords);
+        const coords = parseCoords(editLocCoords);
         if (!coords) {
             showAlert("Invalid coordinates format. Use: lat, lng");
             return;
         }
 
-        setSavingHome(true);
+        setSavingLoc(true);
         try {
+            const updateField = type === 'start' ? 'startLocation' : 'endLocation';
             await updateProject(projectId, {
-                homeLocation: {
-                    name: editHomeName,
-                    coordinates: editHomeCoords
+                [updateField]: {
+                    name: editLocName,
+                    coordinates: editLocCoords
                 }
             }, username);
             if (onUpdateProject) onUpdateProject();
-            setIsEditingHome(false);
+            if (type === 'start') setIsEditingStart(false);
+            else setIsEditingEnd(false);
         } catch (e) {
-            console.error("Error saving home location:", e);
-            showAlert("Failed to save home location.");
+            console.error("Error saving location:", e);
+            showAlert("Failed to save location.");
         } finally {
-            setSavingHome(false);
+            setSavingLoc(false);
         }
     };
 
-    const handleUseMyLocationForHome = () => {
+    const handleUseMyLocation = () => {
         navigator.geolocation.getCurrentPosition(pos => {
             const coords = `${pos.coords.latitude}, ${pos.coords.longitude}`;
-            setEditHomeCoords(coords);
+            setEditLocCoords(coords);
         }, err => {
             console.error(err);
             showAlert("Could not get location.");
@@ -500,7 +540,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
 
             // 3. Grand Tour (Nearest Neighbor)
             let unvisited = [...snapshotSections];
-            let currentPos = homePosition;
+            let currentPos = startPosition;
             const grandTour = [];
 
             while (unvisited.length > 0) {
@@ -542,14 +582,14 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
             };
 
             let totalWeight = 0;
-            let simPos = homePosition;
+            let simPos = startPosition;
             for (const sec of grandTour) {
                 const coords = parseCoords(sec.coordinates);
                 totalWeight += getSectionWeight(sec, simPos);
                 if (coords) simPos = coords;
             }
-            // Add return to home weight (approx)
-            totalWeight += (calculateDistance(simPos, homePosition) * 1.2 / 65) * 60;
+            // Add return to end weight (approx)
+            totalWeight += (calculateDistance(simPos, endPosition) * 1.2 / 65) * 60;
 
             const numDays = daysPlan.length;
             const targetWeightPerDay = totalWeight / numDays;
@@ -677,7 +717,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
             const sectionsToOptimize = [...daySections];
 
             // Determine start position
-            let currentPos = homePosition;
+            let currentPos = startPosition;
             if (dayNum > 1) {
                 const prevDay = daysPlan.find(d => d.day === dayNum - 1);
                 if (prevDay && prevDay.sequences && prevDay.sequences.length > 0) {
@@ -897,7 +937,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
     const dayStats = useMemo(() => {
         const stats = {};
         const sortedDays = [...daysPlan].sort((a, b) => a.day - b.day);
-        let currentLocation = homePosition;
+        let currentLocation = startPosition;
 
         sortedDays.forEach(day => {
             const daySections = sections.filter(s =>
@@ -931,7 +971,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                         totalMiles += calculateDistance(dayMappable[i], dayMappable[i + 1]);
                     }
                     if (day.day === sortedDays[sortedDays.length - 1].day && dayMappable.length > 0) {
-                        totalMiles += calculateDistance(dayMappable[dayMappable.length - 1], homePosition);
+                        totalMiles += calculateDistance(dayMappable[dayMappable.length - 1], endPosition);
                     }
                 } else {
                     // Fallback estimate - REMOVED per user request
@@ -943,7 +983,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                         totalMiles += calculateDistance(dayMappable[i], dayMappable[i + 1]);
                     }
                     if (day.day === sortedDays[sortedDays.length - 1].day && dayMappable.length > 0) {
-                        totalMiles += calculateDistance(dayMappable[dayMappable.length - 1], homePosition);
+                        totalMiles += calculateDistance(dayMappable[dayMappable.length - 1], endPosition);
                     }
                     // drivingMinutes = (totalMiles * 1.2 / 65) * 60;
                     // stopMinutes = daySections.length * 15;
@@ -982,7 +1022,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
         });
 
         return stats;
-    }, [daysPlan, sections, homePosition, dayDriveMinutes, dayRouteErrors, appliedMinutesPerStop]);
+    }, [daysPlan, sections, startPosition, endPosition, dayDriveMinutes, dayRouteErrors, appliedMinutesPerStop]);
 
     const getEstimatedTime = (day) => {
         return dayStats[day.day]?.timeStr || "0h 0m";
@@ -1084,9 +1124,9 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
 
     const routeWaypoints = useMemo(() => {
         if (orderedRouteSections.length === 0) return [];
-        // Home → stops → Home
-        return [homePosition, ...orderedRouteSections.map(s => s.latLng), homePosition];
-    }, [orderedRouteSections, homePosition]);
+        // Start → stops → End
+        return [startPosition, ...orderedRouteSections.map(s => s.latLng), endPosition];
+    }, [orderedRouteSections, startPosition, endPosition]);
 
     // Fetch OSRM route when waypoints change
     useEffect(() => {
@@ -1135,7 +1175,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                 const sortedDays = [...daysPlan].sort((a, b) => a.day - b.day);
 
                 // Track where the previous day ended
-                let lastLocation = homePosition;
+                let lastLocation = startPosition;
 
                 for (const day of sortedDays) {
                     if (cancelled) break;
@@ -1159,7 +1199,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
 
                     // LAST day rules
                     if (day.day === sortedDays[sortedDays.length - 1].day && waypoints.length > 0) {
-                        waypoints.push(homePosition);
+                        waypoints.push(endPosition);
                     }
 
                     if (waypoints.length >= 2) {
@@ -1202,13 +1242,13 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
         }
 
         return () => { cancelled = true; };
-    }, [daysPlan, sections, showDaysPlan, highlightedDays.size, homePosition]);
+    }, [daysPlan, sections, showDaysPlan, highlightedDays.size, startPosition, endPosition]);
 
     // Fallback straight-line positions
     const fallbackPositions = routeWaypoints;
 
-    // All positions for fit-bounds (include home)
-    const allPositions = useMemo(() => [homePosition, ...mappableSections.map(s => s.latLng)], [mappableSections, homePosition]);
+    // All positions for fit-bounds (include start and end)
+    const allPositions = useMemo(() => [startPosition, endPosition, ...mappableSections.map(s => s.latLng)], [mappableSections, startPosition, endPosition]);
 
     // Selected section position
     const selectedPosition = useMemo(() => {
@@ -1776,7 +1816,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
             {/* Map */}
             <div className="trip-map-wrapper">
                 <MapContainer
-                    center={homePosition}
+                    center={startPosition}
                     zoom={6}
                     style={{ height: '100%', width: '100%' }}
                     zoomControl={true}
@@ -1792,38 +1832,65 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                     <MapClickHandler />
                     <LocationMarker />
 
-                    {/* Home Marker */}
+                    {/* Start Marker */}
                     <Marker
-                        position={homePosition}
-                        icon={homeIcon}
+                        position={startPosition}
+                        icon={startIcon}
                         zIndexOffset={2000}
                         eventHandlers={{
-                            click: () => openEditHome()
+                            click: () => openEditStart()
                         }}
                     >
                         <Popup className="trip-map-popup" maxWidth={300}>
                             <div className="popup-content">
                                 <div className="popup-header">
-                                    <span className="popup-section-id">{homeName}</span>
+                                    <span className="popup-section-id">{startName}</span>
                                 </div>
                                 <div className="popup-location">
-                                    <Home size={12} />
-                                    Home Base — Lubbock, TX
-                                </div>
-                                <div className="popup-meta">
-                                    <span className="popup-status pending">
-                                        <Clock size={12} />
-                                        Start & End Point
-                                    </span>
+                                    <MapPin size={12} className="text-green-500" />
+                                    Starting Point
                                 </div>
                                 {isAdmin && (
                                     <div className="popup-actions" style={{ marginTop: '8px' }}>
                                         <button
                                             className="popup-view-btn"
-                                            onClick={openEditHome}
+                                            onClick={openEditStart}
                                             style={{ width: '100%', justifyContent: 'center' }}
                                         >
-                                            Edit Home Location
+                                            Edit Start Location
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </Popup>
+                    </Marker>
+
+                    {/* End Marker */}
+                    <Marker
+                        position={endPosition}
+                        icon={endIcon}
+                        zIndexOffset={2000}
+                        eventHandlers={{
+                            click: () => openEditEnd()
+                        }}
+                    >
+                        <Popup className="trip-map-popup" maxWidth={300}>
+                            <div className="popup-content">
+                                <div className="popup-header">
+                                    <span className="popup-section-id">{endName}</span>
+                                </div>
+                                <div className="popup-location">
+                                    <Flag size={12} className="text-red-500" />
+                                    Ending Point
+                                </div>
+                                {isAdmin && (
+                                    <div className="popup-actions" style={{ marginTop: '8px' }}>
+                                        <button
+                                            className="popup-view-btn"
+                                            onClick={openEditEnd}
+                                            style={{ width: '100%', justifyContent: 'center' }}
+                                        >
+                                            Edit End Location
                                         </button>
                                     </div>
                                 )}
@@ -2004,8 +2071,12 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                                 <span>Pending</span>
                             </div>
                             <div className="legend-item">
-                                <Home size={16} className="text-[hsl(var(--primary))]" />
-                                <span>Home ({homeName})</span>
+                                <span className="legend-dot" style={{ background: '#22c55e', borderColor: '#16a34a' }}></span>
+                                <span>Start ({startName})</span>
+                            </div>
+                            <div className="legend-item">
+                                <span className="legend-dot" style={{ background: '#ef4444', borderColor: '#dc2626' }}></span>
+                                <span>End ({endName})</span>
                             </div>
                             {routeGeometry && (
                                 <div className="legend-item">
@@ -2024,17 +2095,17 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                 </div>
             </div>
 
-            {/* Edit Home Modal */}
+            {/* Edit Location Modal */}
             {
-                isEditingHome && (
+                (isEditingStart || isEditingEnd) && (
                     <div className="fixed inset-0 bg-black/50 z-[3000] flex items-center justify-center p-4">
                         <div className="bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg shadow-2xl w-full max-w-sm flex flex-col">
                             <div className="flex justify-between items-center p-4 border-b border-[hsl(var(--border))]">
                                 <h3 className="text-lg font-bold flex items-center gap-2">
-                                    <Home className="text-[hsl(var(--primary))]" size={20} />
-                                    Edit Home Location
+                                    {isEditingStart ? <MapPin className="text-green-500" size={20} /> : <Flag className="text-red-500" size={20} />}
+                                    Edit {isEditingStart ? 'Start' : 'End'} Location
                                 </h3>
-                                <button onClick={() => setIsEditingHome(false)} className="btn btn-ghost btn-sm btn-circle">
+                                <button onClick={() => { setIsEditingStart(false); setIsEditingEnd(false); }} className="btn btn-ghost btn-sm btn-circle">
                                     <X size={20} />
                                 </button>
                             </div>
@@ -2044,8 +2115,8 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                                     <input
                                         type="text"
                                         className="input"
-                                        value={editHomeName}
-                                        onChange={e => setEditHomeName(e.target.value)}
+                                        value={editLocName}
+                                        onChange={e => setEditLocName(e.target.value)}
                                         placeholder="e.g. Texas Tech"
                                     />
                                 </div>
@@ -2055,12 +2126,12 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                                         <input
                                             type="text"
                                             className="input flex-1"
-                                            value={editHomeCoords}
-                                            onChange={e => setEditHomeCoords(e.target.value)}
+                                            value={editLocCoords}
+                                            onChange={e => setEditLocCoords(e.target.value)}
                                             placeholder="e.g. 33.587, -101.874"
                                         />
                                         <button
-                                            onClick={handleUseMyLocationForHome}
+                                            onClick={handleUseMyLocation}
                                             className="btn btn-outline"
                                             title="Use My Location"
                                         >
@@ -2070,9 +2141,9 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                                 </div>
                             </div>
                             <div className="p-4 border-t border-[hsl(var(--border))] flex justify-end gap-2">
-                                <button onClick={() => setIsEditingHome(false)} className="btn btn-ghost">Cancel</button>
-                                <button onClick={handleSaveHome} className="btn btn-primary" disabled={savingHome}>
-                                    {savingHome ? 'Saving...' : 'Save Changes'}
+                                <button onClick={() => { setIsEditingStart(false); setIsEditingEnd(false); }} className="btn btn-ghost">Cancel</button>
+                                <button onClick={() => handleSaveLocation(isEditingStart ? 'start' : 'end')} className="btn btn-primary" disabled={savingLoc}>
+                                    {savingLoc ? 'Saving...' : 'Save Changes'}
                                 </button>
                             </div>
                         </div>
