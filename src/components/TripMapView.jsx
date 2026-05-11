@@ -1394,7 +1394,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                     <ArrowLeft size={18} />
                     <span>Back</span>
                 </button>
-                <div className="trip-map-title" style={{ flexShrink: 1, minWidth: 0 }}>
+                <div className="trip-map-title" style={{ flexGrow: 1, flexShrink: 1, minWidth: 0 }}>
                     <MapPin size={18} style={{ flexShrink: 0 }} />
                     <span style={{ whiteSpace: 'nowrap' }}>Trip Map</span>
                     <span className="trip-map-stats" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

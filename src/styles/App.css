@@ -1856,14 +1856,12 @@ select.input option {
 
     .days-plan-panel {
         position: fixed;
-        top: auto;
-        /* Let it sit at the bottom or center */
-        bottom: 2rem;
+        top: 60px;
+        bottom: 1rem;
         left: 1rem;
         right: 1rem;
         width: auto;
-        /* Use dynamic viewport height for mobile */
-        max-height: 80dvh;
+        max-height: calc(100dvh - 80px);
         height: auto;
         display: flex;
         flex-direction: column;
