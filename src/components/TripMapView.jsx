@@ -599,7 +599,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
 
             let currentDayIdx = 0;
             let currentDayWeight = 0;
-            let tourPos = homePosition;
+            let tourPos = startPosition;
 
             grandTour.forEach((sec, idx) => {
                 // If we exceeded target and not on last day, switch
