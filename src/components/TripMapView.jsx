@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
-import { ArrowLeft, MapPin, Navigation, CheckCircle, Clock, ExternalLink, Building2, Route, Home, Hash, Trash2, Save, Landmark, Calendar, Plus, X, ChevronDown, ChevronUp, Eye, EyeOff, Printer, Download, FileSpreadsheet, Zap, RotateCcw, ListOrdered, ArrowDown, Check, Flag, Edit2 } from 'lucide-react';
+import { ArrowLeft, MapPin, Navigation, CheckCircle, Clock, ExternalLink, Building2, Route, Home, Hash, Trash2, Save, Landmark, Calendar, Plus, X, ChevronDown, ChevronUp, Eye, EyeOff, Printer, Download, FileSpreadsheet, Zap, RotateCcw, ListOrdered, ArrowDown, Check, Flag, Edit2, Menu } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -498,6 +498,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
     const [dayRouteErrors, setDayRouteErrors] = useState({}); // { dayNum: boolean }
     const [optimizingDay, setOptimizingDay] = useState(null);
     const [isGlobalOptimizing, setIsGlobalOptimizing] = useState(false);
+    const [showMobileMenu, setShowMobileMenu] = useState(false);
 
     // In-memory snapshot for undo — stores { daysPlan, sections } before last optimize
     const optimizeSnapshot = useRef(null);
@@ -1381,134 +1382,126 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
     return (
         <div className="trip-map-container">
             {/* Header Bar */}
-            <div className="trip-map-header">
-                <button onClick={onBack} className="trip-map-back-btn">
+            <div className="trip-map-header" style={{ flexWrap: 'nowrap', position: 'relative' }}>
+                <button onClick={onBack} className="trip-map-back-btn" style={{ flexShrink: 0 }}>
                     <ArrowLeft size={18} />
                     <span>Back</span>
                 </button>
-                <div className="trip-map-title">
-                    <MapPin size={18} />
-                    <span>Trip Map</span>
-                    <span className="trip-map-stats">
+                <div className="trip-map-title" style={{ flexShrink: 1, minWidth: 0 }}>
+                    <MapPin size={18} style={{ flexShrink: 0 }} />
+                    <span style={{ whiteSpace: 'nowrap' }}>Trip Map</span>
+                    <span className="trip-map-stats" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {evaluated}/{total} evaluated
                         {orderedRouteSections.length > 0 && ` • ${orderedRouteSections.length} stops`}
                         {routeLoading && ' • Loading route...'}
                     </span>
                 </div>
 
-                {/* Trip Locations */}
-                <div style={{ display: 'flex', gap: '8px', marginLeft: '12px' }}>
-                    <div className="badge badge-outline cursor-pointer hover:bg-base-200" onClick={openEditStart} title="Edit Start Location" style={{ padding: '8px 12px', height: 'auto' }}>
-                        <MapPin size={12} className="text-green-500 mr-1" /> Start: {startName} {isAdmin && <Edit2 size={10} className="ml-1 opacity-50" />}
-                    </div>
-                    <div className="badge badge-outline cursor-pointer hover:bg-base-200" onClick={openEditEnd} title="Edit End Location" style={{ padding: '8px 12px', height: 'auto' }}>
-                        <Flag size={12} className="text-red-500 mr-1" /> End: {endName} {isAdmin && <Edit2 size={10} className="ml-1 opacity-50" />}
-                    </div>
-                </div>
-
-                {/* Min/stop time control — always visible in header */}
-                <div style={{
-                    display: 'flex', alignItems: 'center', gap: '6px',
-                    marginLeft: 'auto',
-                    padding: '0 10px',
-                    borderLeft: '1px solid hsl(var(--border) / 0.5)',
-                    borderRight: '1px solid hsl(var(--border) / 0.5)'
-                }}>
-                    <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'hsl(var(--muted-foreground))', whiteSpace: 'nowrap', letterSpacing: '0.03em' }}>
-                        min/stop
-                    </label>
-                    <input
-                        type="number"
-                        min="1"
-                        max="480"
-                        value={minutesPerStop}
-                        onChange={(e) => {
-                            const val = parseInt(e.target.value, 10);
-                            if (!isNaN(val) && val > 0) setMinutesPerStop(val);
-                        }}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                                handleApplyMinutes();
-                            }
-                        }}
-                        style={{
-                            width: '50px', padding: '4px 6px', fontSize: '0.82rem',
-                            borderRadius: '6px',
-                            border: `1.5px solid ${minutesPerStop !== appliedMinutesPerStop ? 'hsl(var(--primary))' : 'hsl(var(--border))'}`,
-                            background: 'hsl(var(--background))',
-                            color: 'hsl(var(--foreground))',
-                            textAlign: 'center', outline: 'none'
-                        }}
-                        title="Minutes spent at each stop. Press Enter or click Apply."
-                    />
-                    <button
-                        onClick={handleApplyMinutes}
-                        style={{
-                            display: 'flex', alignItems: 'center', gap: '4px',
-                            padding: '4px 8px', borderRadius: '6px', border: 'none',
-                            cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
-                            transition: 'all 0.2s',
-                            background: justApplied ? '#22c55e' : (minutesPerStop !== appliedMinutesPerStop ? 'hsl(var(--primary))' : 'hsl(var(--muted) / 0.4)'),
-                            color: justApplied || minutesPerStop !== appliedMinutesPerStop ? '#fff' : 'hsl(var(--muted-foreground))'
-                        }}
-                        title="Apply stop time to estimates and optimization"
-                    >
-                        <Check size={13} />
-                        {justApplied ? 'Applied!' : 'Apply'}
-                    </button>
-                </div>
-
-                <div className="relative">
-                    <button
-                        onClick={() => setShowExportMenu(!showExportMenu)}
-                        className="btn btn-ghost"
-                        title="Export Itinerary"
-                    >
-                        <Download size={18} />
-                    </button>
-                    {showExportMenu && (
-                        <div className="absolute top-full right-0 mt-2 border border-[hsl(var(--border))] rounded-lg shadow-lg p-1 flex flex-col gap-1 min-w-[140px] z-[5000]" style={{ backgroundColor: 'hsl(var(--card))' }}>
-                            <button
-                                onClick={() => {
-                                    handlePrint();
-                                    setShowExportMenu(false);
-                                }}
-                                className="btn btn-ghost justify-start text-xs px-2 py-2 h-auto text-left"
-                            >
-                                <Printer size={14} className="mr-2" /> PDF
-                            </button>
-                            <button
-                                onClick={() => {
-                                    // Export the ordered sections that are part of the route
-                                    const sectionsToExport = orderedRouteSections.length > 0 ? orderedRouteSections : sections;
-                                    exportToExcel(sectionsToExport, username, showAlert, daysPlan);
-                                    setShowExportMenu(false);
-                                }}
-                                className="btn btn-ghost justify-start text-xs px-2 py-2 h-auto text-left"
-                            >
-                                <FileSpreadsheet size={14} className="mr-2" /> Excel
-                            </button>
+                {/* Desktop controls — hidden on mobile */}
+                <div className="hidden md:flex items-center gap-2" style={{ marginLeft: 'auto', flexShrink: 0 }}>
+                    {/* Trip Locations */}
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                        <div className="badge badge-outline cursor-pointer hover:bg-base-200" onClick={openEditStart} title="Edit Start Location" style={{ padding: '6px 10px', height: 'auto', fontSize: '0.72rem' }}>
+                            <MapPin size={11} className="text-green-500 mr-1" /> Start: {startName} {isAdmin && <Edit2 size={9} className="ml-1 opacity-50" />}
                         </div>
-                    )}
+                        <div className="badge badge-outline cursor-pointer hover:bg-base-200" onClick={openEditEnd} title="Edit End Location" style={{ padding: '6px 10px', height: 'auto', fontSize: '0.72rem' }}>
+                            <Flag size={11} className="text-red-500 mr-1" /> End: {endName} {isAdmin && <Edit2 size={9} className="ml-1 opacity-50" />}
+                        </div>
+                    </div>
+
+                    {/* Min/stop */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '0 10px', borderLeft: '1px solid hsl(var(--border) / 0.5)', borderRight: '1px solid hsl(var(--border) / 0.5)' }}>
+                        <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'hsl(var(--muted-foreground))', whiteSpace: 'nowrap' }}>min/stop</label>
+                        <input
+                            type="number" min="1" max="480" value={minutesPerStop}
+                            onChange={(e) => { const val = parseInt(e.target.value, 10); if (!isNaN(val) && val > 0) setMinutesPerStop(val); }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') handleApplyMinutes(); }}
+                            style={{ width: '50px', padding: '4px 6px', fontSize: '0.82rem', borderRadius: '6px', border: `1.5px solid ${minutesPerStop !== appliedMinutesPerStop ? 'hsl(var(--primary))' : 'hsl(var(--border))'}`, background: 'hsl(var(--background))', color: 'hsl(var(--foreground))', textAlign: 'center', outline: 'none' }}
+                            title="Minutes spent at each stop."
+                        />
+                        <button onClick={handleApplyMinutes} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, transition: 'all 0.2s', background: justApplied ? '#22c55e' : (minutesPerStop !== appliedMinutesPerStop ? 'hsl(var(--primary))' : 'hsl(var(--muted) / 0.4)'), color: justApplied || minutesPerStop !== appliedMinutesPerStop ? '#fff' : 'hsl(var(--muted-foreground))' }} title="Apply stop time">
+                            <Check size={13} />{justApplied ? 'Applied!' : 'Apply'}
+                        </button>
+                    </div>
+
+                    {/* Export */}
+                    <div className="relative">
+                        <button onClick={() => setShowExportMenu(!showExportMenu)} className="btn btn-ghost" title="Export Itinerary"><Download size={18} /></button>
+                        {showExportMenu && (
+                            <div className="absolute top-full right-0 mt-2 border border-[hsl(var(--border))] rounded-lg shadow-lg p-1 flex flex-col gap-1 min-w-[140px] z-[5000]" style={{ backgroundColor: 'hsl(var(--card))' }}>
+                                <button onClick={() => { handlePrint(); setShowExportMenu(false); }} className="btn btn-ghost justify-start text-xs px-2 py-2 h-auto text-left"><Printer size={14} className="mr-2" /> PDF</button>
+                                <button onClick={() => { exportToExcel(orderedRouteSections.length > 0 ? orderedRouteSections : sections, username, showAlert, daysPlan); setShowExportMenu(false); }} className="btn btn-ghost justify-start text-xs px-2 py-2 h-auto text-left"><FileSpreadsheet size={14} className="mr-2" /> Excel</button>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Sequence */}
+                    <button onClick={() => setShowSequenceManager(!showSequenceManager)} className={`btn btn-ghost ${showSequenceManager ? 'bg-accent' : ''}`} style={{ gap: '8px' }} title="Sequence Manager">
+                        <ListOrdered size={18} /><span>Sequence</span>
+                    </button>
+
+                    {/* Days Plan */}
+                    <button onClick={() => setShowDaysPlan(!showDaysPlan)} className={`btn btn-ghost ${showDaysPlan ? 'bg-accent' : ''}`} style={{ gap: '8px' }}>
+                        <Calendar size={18} /><span>Days Plan</span>
+                    </button>
                 </div>
+
+                {/* Mobile Hamburger — shown only on mobile */}
                 <button
-                    onClick={() => setShowSequenceManager(!showSequenceManager)}
-                    className={`btn btn-ghost ${showSequenceManager ? 'bg-accent' : ''}`}
-                    style={{ gap: '8px' }}
-                    title="Sequence Manager"
+                    className="md:hidden btn btn-ghost ml-auto"
+                    onClick={() => setShowMobileMenu(prev => !prev)}
+                    style={{ flexShrink: 0 }}
+                    title="Menu"
                 >
-                    <ListOrdered size={18} />
-                    <span className="hidden md:inline">Sequence</span>
-                </button>
-                <button
-                    onClick={() => setShowDaysPlan(!showDaysPlan)}
-                    className={`btn btn-ghost ${showDaysPlan ? 'bg-accent' : ''}`}
-                    style={{ gap: '8px' }}
-                >
-                    <Calendar size={18} />
-                    <span className="hidden md:inline">Days Plan</span>
+                    {showMobileMenu ? <X size={20} /> : <Menu size={20} />}
                 </button>
             </div>
+
+            {/* Mobile Dropdown Menu */}
+            {showMobileMenu && (
+                <div className="md:hidden" style={{ background: 'hsl(var(--card))', borderBottom: '1px solid hsl(var(--border))', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '12px', zIndex: 4000, position: 'relative' }}>
+
+                    {/* Start / End locations */}
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <div className="badge badge-outline cursor-pointer" onClick={() => { openEditStart(); setShowMobileMenu(false); }} style={{ padding: '8px 12px', height: 'auto', fontSize: '0.75rem' }}>
+                            <MapPin size={12} className="text-green-500 mr-1" /> Start: {startName} {isAdmin && <Edit2 size={10} className="ml-1 opacity-50" />}
+                        </div>
+                        <div className="badge badge-outline cursor-pointer" onClick={() => { openEditEnd(); setShowMobileMenu(false); }} style={{ padding: '8px 12px', height: 'auto', fontSize: '0.75rem' }}>
+                            <Flag size={12} className="text-red-500 mr-1" /> End: {endName} {isAdmin && <Edit2 size={10} className="ml-1 opacity-50" />}
+                        </div>
+                    </div>
+
+                    {/* Min/stop */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'hsl(var(--muted-foreground))' }}>min/stop</label>
+                        <input
+                            type="number" min="1" max="480" value={minutesPerStop}
+                            onChange={(e) => { const val = parseInt(e.target.value, 10); if (!isNaN(val) && val > 0) setMinutesPerStop(val); }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { handleApplyMinutes(); } }}
+                            style={{ width: '60px', padding: '6px 8px', fontSize: '0.9rem', borderRadius: '8px', border: `1.5px solid ${minutesPerStop !== appliedMinutesPerStop ? 'hsl(var(--primary))' : 'hsl(var(--border))'}`, background: 'hsl(var(--background))', color: 'hsl(var(--foreground))', textAlign: 'center', outline: 'none' }}
+                        />
+                        <button onClick={() => { handleApplyMinutes(); }} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, background: justApplied ? '#22c55e' : (minutesPerStop !== appliedMinutesPerStop ? 'hsl(var(--primary))' : 'hsl(var(--muted) / 0.4)'), color: justApplied || minutesPerStop !== appliedMinutesPerStop ? '#fff' : 'hsl(var(--muted-foreground))' }}>
+                            <Check size={14} />{justApplied ? 'Applied!' : 'Apply'}
+                        </button>
+                    </div>
+
+                    {/* Action buttons row */}
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <button onClick={() => { handlePrint(); setShowMobileMenu(false); }} className="btn btn-ghost btn-sm gap-2">
+                            <Printer size={15} /> PDF
+                        </button>
+                        <button onClick={() => { exportToExcel(orderedRouteSections.length > 0 ? orderedRouteSections : sections, username, showAlert, daysPlan); setShowMobileMenu(false); }} className="btn btn-ghost btn-sm gap-2">
+                            <FileSpreadsheet size={15} /> Excel
+                        </button>
+                        <button onClick={() => { setShowSequenceManager(!showSequenceManager); setShowMobileMenu(false); }} className={`btn btn-ghost btn-sm gap-2 ${showSequenceManager ? 'bg-accent' : ''}`}>
+                            <ListOrdered size={15} /> Sequence
+                        </button>
+                        <button onClick={() => { setShowDaysPlan(!showDaysPlan); setShowMobileMenu(false); }} className={`btn btn-ghost btn-sm gap-2 ${showDaysPlan ? 'bg-accent' : ''}`}>
+                            <Calendar size={15} /> Days Plan
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* Sequence Manager Panel */}
             {showSequenceManager && (
