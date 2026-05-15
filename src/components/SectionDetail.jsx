@@ -123,7 +123,9 @@ const SectionDetail = ({ section, onUpdate, allTypes, onChangeStatus, onChangeTy
                             <span className="font-medium">{section.test_sequence || 'N/A'}</span>
                         </div>
                         <div className="flex flex-col gap-1">
-                            <span className="text-xs font-semibold text-muted uppercase tracking-wider">Start Coordinates</span>
+                            <span className="text-xs font-semibold text-muted uppercase tracking-wider">
+                                {section.endCoordinates ? 'Start Coordinates' : 'Coordinates'}
+                            </span>
                             <span className="font-mono text-sm">{section.coordinates || 'N/A'}</span>
                         </div>
                         {section.endCoordinates && (
