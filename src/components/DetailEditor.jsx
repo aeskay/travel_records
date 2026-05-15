@@ -512,7 +512,7 @@ const HistoryItem = ({ detail, isEditing, transcribeAudio, modelProgress, onEdit
                 : `<div style="font-size: 0.75rem; color: hsl(var(--muted-foreground)); margin-top: 0.25rem; font-style: italic;">(audio recorded — no speech transcript)</div>`;
 
             // Strip old markers if present
-            let baseContent = detail.content;
+            let baseContent = detail.content.replace('Start Coords:', 'Coords:');
             if (isStuck) {
                 // Remove the processing div and the placeholder ID div if present
                 baseContent = baseContent.replace(/<div[^>]*?>\s*(<span[^>]*?>)?Processing transcript\.{3}(<\/span>)?\s*<\/div>/gi, '');
@@ -533,7 +533,7 @@ const HistoryItem = ({ detail, isEditing, transcribeAudio, modelProgress, onEdit
 
     useEffect(() => {
         if (isEditing && itemRef.current) {
-            itemRef.current.innerHTML = detail.content;
+            itemRef.current.innerHTML = detail.content.replace('Start Coords:', 'Coords:');
             itemRef.current.focus();
         } else {
             setSelectedImg(null);
@@ -625,7 +625,7 @@ const HistoryItem = ({ detail, isEditing, transcribeAudio, modelProgress, onEdit
             ) : (
                 <div
                     className="ql-editor prose prose-sm max-w-none dark:prose-invert"
-                    dangerouslySetInnerHTML={{ __html: detail.content }}
+                    dangerouslySetInnerHTML={{ __html: detail.content.replace('Start Coords:', 'Coords:') }}
                     onClick={(e) => {
                         if (e.target.tagName === 'IMG') {
                             e.preventDefault();
