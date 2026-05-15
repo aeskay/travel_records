@@ -74,15 +74,15 @@ const SectionDetail = ({ section, onUpdate, allTypes, onChangeStatus, onChangeTy
                             {/* Badge removed from here for mobile */}
                             {section.coordinates && (() => {
                                 const mapsUrl = section.endCoordinates
-                                    ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(section.coordinates)}&destination=${encodeURIComponent(section.endCoordinates)}`
-                                    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(section.coordinates)}`;
+                                    ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(section.endCoordinates)}&waypoints=${encodeURIComponent(section.coordinates)}`
+                                    : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(section.coordinates)}`;
                                 return (
                                     <a
                                         href={mapsUrl}
                                         target="_blank"
                                         rel="noreferrer"
                                         className="btn btn-outline"
-                                        title={section.endCoordinates ? 'View section extent in Google Maps' : 'View in Google Maps'}
+                                        title={section.endCoordinates ? 'Navigate: Current Location → Start → End' : 'Navigate: Current Location → Start'}
                                     >
                                         <Map size={18} /> {section.endCoordinates ? 'Map (Start→End)' : 'Map'}
                                     </a>
