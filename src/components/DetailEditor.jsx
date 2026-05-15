@@ -250,7 +250,7 @@ const DetailEditor = ({ section, onUpdate }) => {
             const timestamp = new Date();
             const header = `
                 <div style="font-size: 0.85rem; color: hsl(var(--muted-foreground)); margin-bottom: 0.5rem; border-bottom: 1px solid hsl(var(--border)); padding-bottom: 0.25rem;">
-                    <strong>${user.username}</strong> • Start Coords: ${section.coordinates || 'N/A'}
+                    <strong>${user.username}</strong> • Coords: ${section.coordinates || 'N/A'}
                 </div>
             `;
 
