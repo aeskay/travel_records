@@ -247,10 +247,22 @@ const DetailEditor = ({ section, onUpdate }) => {
 
         setIsSaving(true);
         try {
+            let currentCoords = section.coordinates || 'N/A';
+            try {
+                if (navigator.geolocation) {
+                    const position = await new Promise((resolve, reject) => {
+                        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000, enableHighAccuracy: true });
+                    });
+                    currentCoords = `${position.coords.latitude.toFixed(5)}, ${position.coords.longitude.toFixed(5)}`;
+                }
+            } catch (err) {
+                console.warn("Could not get live location, falling back to section coordinates:", err);
+            }
+
             const timestamp = new Date();
             const header = `
                 <div style="font-size: 0.85rem; color: hsl(var(--muted-foreground)); margin-bottom: 0.5rem; border-bottom: 1px solid hsl(var(--border)); padding-bottom: 0.25rem;">
-                    <strong>${user.username}</strong> • Coords: ${section.coordinates || 'N/A'}
+                    <strong>${user.username}</strong> • Coords: ${currentCoords}
                 </div>
             `;
 
