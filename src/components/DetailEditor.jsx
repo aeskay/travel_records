@@ -247,16 +247,29 @@ const DetailEditor = ({ section, onUpdate }) => {
 
         setIsSaving(true);
         try {
-            let currentCoords = section.coordinates || 'N/A';
+            let currentCoords = null;
+            let geoError = false;
             try {
                 if (navigator.geolocation) {
                     const position = await new Promise((resolve, reject) => {
                         navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000, enableHighAccuracy: true });
                     });
                     currentCoords = `${position.coords.latitude.toFixed(5)}, ${position.coords.longitude.toFixed(5)}`;
+                } else {
+                    geoError = true;
                 }
             } catch (err) {
-                console.warn("Could not get live location, falling back to section coordinates:", err);
+                console.warn("Could not get live location:", err);
+                geoError = true;
+            }
+
+            if (geoError || !currentCoords) {
+                const proceed = await showConfirm("Live GPS coordinates unavailable. Continue saving without coordinates?");
+                if (!proceed) {
+                    setIsSaving(false);
+                    return;
+                }
+                currentCoords = "No GPS Coordinates";
             }
 
             const timestamp = new Date();
