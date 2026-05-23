@@ -14,6 +14,7 @@ import { getSections, addSections, addSection, deleteSection, getProject } from 
 import { parseCSV } from './utils/csvImporter';
 import { UserProvider, useUser } from './context/UserContext';
 import { NotificationProvider, useNotification } from './context/NotificationContext';
+import { LocationProvider } from './context/LocationContext';
 import './index.css';
 import './styles/App.css';
 
@@ -372,7 +373,9 @@ function App() {
   return (
     <NotificationProvider>
       <UserProvider>
-        <AppContent />
+        <LocationProvider>
+          <AppContent />
+        </LocationProvider>
       </UserProvider>
     </NotificationProvider>
   );

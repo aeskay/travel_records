@@ -7,6 +7,7 @@ import ImageLightbox from './ImageLightbox';
 import { useUser } from '../context/UserContext';
 import { useNotification } from '../context/NotificationContext';
 import { useVoiceLogger } from '../hooks/useVoiceLogger';
+import { useLocation } from '../context/LocationContext';
 
 const DetailEditor = ({ section, onUpdate }) => {
     const { user } = useUser();
@@ -35,6 +36,8 @@ const DetailEditor = ({ section, onUpdate }) => {
     // Track if we've already inserted the current transcript to avoid duplicates
     const lastInsertedTranscriptRef = useRef(null);
 
+    const { location: globalLocation } = useLocation();
+
     // Background GPS tracking and interaction-based snapshotting
     const latestPosRef = useRef(null);
     const capturePosRef = useRef(null);
@@ -51,38 +54,27 @@ const DetailEditor = ({ section, onUpdate }) => {
         }
     }, []);
 
+    // Sync global location updates into the interaction ref
     useEffect(() => {
-        if (!navigator.geolocation) return;
-
-        console.log("[DetailEditor] Starting background GPS warm-up...");
-        const watchId = navigator.geolocation.watchPosition(
-            (position) => {
-                latestPosRef.current = position;
-                
-                // If user is currently interacting (writing a note, recording audio, taking a photo),
-                // continuously upgrade our captured coordinates with any better-accuracy updates
-                // received from the GPS hardware while they work!
-                if (isInteractingRef.current) {
-                    if (!capturePosRef.current || position.coords.accuracy < capturePosRef.current.coords.accuracy) {
-                        capturePosRef.current = position;
-                        console.log(`[DetailEditor] GPS settled further. Auto-upgraded captured position accuracy to: ${position.coords.accuracy}m`);
-                    }
+        if (globalLocation) {
+            latestPosRef.current = globalLocation;
+            
+            // If user is currently interacting (writing a note, recording audio, taking a photo),
+            // continuously upgrade our captured coordinates with any better-accuracy updates
+            // received from the global GPS context while they work!
+            if (isInteractingRef.current) {
+                if (!capturePosRef.current || globalLocation.coords.accuracy < capturePosRef.current.coords.accuracy) {
+                    capturePosRef.current = globalLocation;
+                    console.log(`[DetailEditor] GPS settled further (global). Auto-upgraded captured position accuracy to: ${globalLocation.coords.accuracy}m`);
                 }
-            },
-            (err) => {
-                console.warn("[DetailEditor] Background GPS watch error:", err);
-            },
-            {
-                enableHighAccuracy: true,
-                maximumAge: 0,
-                timeout: 10000
             }
-        );
+        }
+    }, [globalLocation]);
 
-        return () => {
-            console.log("[DetailEditor] Stopping background GPS watch.");
-            navigator.geolocation.clearWatch(watchId);
-        };
+    // Reset interaction state when section changes
+    useEffect(() => {
+        capturePosRef.current = null;
+        isInteractingRef.current = false;
     }, [section?.docId]);
 
     // Real-time subscription

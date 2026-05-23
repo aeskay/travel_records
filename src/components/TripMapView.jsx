@@ -10,6 +10,7 @@ import { saveSharedDaysPlan, getSharedDaysPlan, updateProject } from '../db';
 import { exportToExcel } from '../utils/exportUtils';
 import { useNotification } from '../context/NotificationContext';
 import { getAccurateCurrentPosition } from '../utils/geoUtils';
+import { useLocation } from '../context/LocationContext';
 
 // --- Constants ---
 const DEFAULT_HOME_POSITION = [33.58703457593024, -101.87436165377096];
@@ -363,6 +364,7 @@ const LocationMarker = () => {
 const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpdateSection, onUpdateSections, onRemoveFromRoute, username, isAdmin, projectId, project, onUpdateProject }) => {
     const theme = useTheme();
     const { showAlert, showConfirm } = useNotification();
+    const { location: globalLocation } = useLocation();
     // Use dark tiles for 'dark' and 'medium' themes
     const isDarkTiles = theme === 'dark' || theme === 'medium';
     const allTypes = useMemo(() => [...new Set(sections.map(s => s.type).filter(Boolean))], [sections]);
@@ -458,7 +460,10 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
     const handleUseMyLocation = async () => {
         setIsLocating(true);
         try {
-            const pos = await getAccurateCurrentPosition();
+            let pos = globalLocation;
+            if (!pos) {
+                pos = await getAccurateCurrentPosition();
+            }
             const coords = `${pos.coords.latitude.toFixed(7)}, ${pos.coords.longitude.toFixed(7)}`;
             setEditLocCoords(coords);
         } catch (err) {
