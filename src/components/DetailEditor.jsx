@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getDetails, addDetail, updateDetail, deleteDetail, addSection, subscribeToDetails } from '../db';
+import { getAccurateCurrentPosition } from '../utils/geoUtils';
 import { History, Save, Edit3, Camera, Mic, X, Image as LucideImage, Square, Trash2, Check, RotateCcw, RefreshCw } from 'lucide-react';
 import ImageResizer from './ImageResizer';
 import ImageLightbox from './ImageLightbox';
@@ -33,6 +34,56 @@ const DetailEditor = ({ section, onUpdate }) => {
 
     // Track if we've already inserted the current transcript to avoid duplicates
     const lastInsertedTranscriptRef = useRef(null);
+
+    // Background GPS tracking and interaction-based snapshotting
+    const latestPosRef = useRef(null);
+    const capturePosRef = useRef(null);
+    const isInteractingRef = useRef(false);
+
+    const recordCaptureLocation = useCallback(() => {
+        isInteractingRef.current = true;
+        if (latestPosRef.current) {
+            // Snapshot location on interaction, or upgrade it if the new one is more accurate
+            if (!capturePosRef.current || latestPosRef.current.coords.accuracy < capturePosRef.current.coords.accuracy) {
+                capturePosRef.current = latestPosRef.current;
+                console.log("[DetailEditor] Snapshotted location at interaction:", latestPosRef.current.coords.latitude, latestPosRef.current.coords.longitude, `Accuracy: ${latestPosRef.current.coords.accuracy}m`);
+            }
+        }
+    }, []);
+
+    useEffect(() => {
+        if (!navigator.geolocation) return;
+
+        console.log("[DetailEditor] Starting background GPS warm-up...");
+        const watchId = navigator.geolocation.watchPosition(
+            (position) => {
+                latestPosRef.current = position;
+                
+                // If user is currently interacting (writing a note, recording audio, taking a photo),
+                // continuously upgrade our captured coordinates with any better-accuracy updates
+                // received from the GPS hardware while they work!
+                if (isInteractingRef.current) {
+                    if (!capturePosRef.current || position.coords.accuracy < capturePosRef.current.coords.accuracy) {
+                        capturePosRef.current = position;
+                        console.log(`[DetailEditor] GPS settled further. Auto-upgraded captured position accuracy to: ${position.coords.accuracy}m`);
+                    }
+                }
+            },
+            (err) => {
+                console.warn("[DetailEditor] Background GPS watch error:", err);
+            },
+            {
+                enableHighAccuracy: true,
+                maximumAge: 0,
+                timeout: 10000
+            }
+        );
+
+        return () => {
+            console.log("[DetailEditor] Stopping background GPS watch.");
+            navigator.geolocation.clearWatch(watchId);
+        };
+    }, [section?.docId]);
 
     // Real-time subscription
     useEffect(() => {
@@ -180,6 +231,7 @@ const DetailEditor = ({ section, onUpdate }) => {
     };
 
     const handleImageSelect = async (e) => {
+        recordCaptureLocation();
         const file = e.target.files[0];
         if (!file) return;
 
@@ -250,14 +302,19 @@ const DetailEditor = ({ section, onUpdate }) => {
             let currentCoords = null;
             let geoError = false;
             try {
-                if (navigator.geolocation) {
-                    const position = await new Promise((resolve, reject) => {
-                        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000, enableHighAccuracy: true });
-                    });
-                    currentCoords = `${position.coords.latitude.toFixed(5)}, ${position.coords.longitude.toFixed(5)}`;
-                } else {
-                    geoError = true;
+                // Use the location snapshotted at the first interaction (typing, voice button, camera button),
+                // otherwise fallback to the latest background coordinate.
+                let position = capturePosRef.current || latestPosRef.current;
+                
+                // If no background position was received yet, fetch a quick, fresh one.
+                if (!position) {
+                    position = await getAccurateCurrentPosition({ timeout: 5000 });
                 }
+
+                const lat = position.coords.latitude.toFixed(7);
+                const lng = position.coords.longitude.toFixed(7);
+                const accuracy = position.coords.accuracy ? ` (±${position.coords.accuracy.toFixed(1)}m)` : '';
+                currentCoords = `${lat}, ${lng}${accuracy}`;
             } catch (err) {
                 console.warn("Could not get live location:", err);
                 geoError = true;
@@ -297,6 +354,8 @@ const DetailEditor = ({ section, onUpdate }) => {
             // Clear editor immediately
             editorRef.current.innerHTML = '';
             setSelectedImg(null);
+            capturePosRef.current = null; // Reset snapshot for the next note
+            isInteractingRef.current = false; // Reset interaction state
 
             // Send to DB
             await addDetail(newDetail, user.username);
@@ -411,6 +470,7 @@ const DetailEditor = ({ section, onUpdate }) => {
                     contentEditable
                     placeholder="Add details, images, or voice notes..."
                     onClick={handleEditorClick}
+                    onInput={recordCaptureLocation}
                     onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
                             // Optional
@@ -454,7 +514,10 @@ const DetailEditor = ({ section, onUpdate }) => {
                         <button
                             className="btn btn-ghost p-2 hover:bg-[hsl(var(--accent))]"
                             title="Take Photo"
-                            onClick={() => cameraInputRef.current?.click()}
+                            onClick={() => {
+                                recordCaptureLocation();
+                                cameraInputRef.current?.click();
+                            }}
                         >
                             <Camera size={18} />
                         </button>
@@ -462,7 +525,10 @@ const DetailEditor = ({ section, onUpdate }) => {
                         <button
                             className="btn btn-ghost p-2 hover:bg-[hsl(var(--accent))]"
                             title="Upload from Gallery"
-                            onClick={() => galleryInputRef.current?.click()}
+                            onClick={() => {
+                                recordCaptureLocation();
+                                galleryInputRef.current?.click();
+                            }}
                         >
                             <LucideImage size={18} />
                         </button>
@@ -470,7 +536,12 @@ const DetailEditor = ({ section, onUpdate }) => {
                         <button
                             className={`btn p-2 ${voiceStatus === 'recording' ? 'text-red-500 animate-pulse' : 'btn-ghost hover:bg-[hsl(var(--accent))]'}`}
                             title={voiceStatus === 'recording' ? "Stop Recording" : "Record Audio"}
-                            onClick={handleToggleRecording}
+                            onClick={() => {
+                                if (voiceStatus !== 'recording') {
+                                    recordCaptureLocation();
+                                }
+                                handleToggleRecording();
+                            }}
                         >
                             {voiceStatus === 'recording' ? <Square size={18} fill="currentColor" /> : <Mic size={18} />}
                         </button>
@@ -478,8 +549,17 @@ const DetailEditor = ({ section, onUpdate }) => {
                         {voiceStatus === 'transcribing' && <span className="text-xs text-blue-500 font-medium animate-pulse">Processing...</span>}
                     </div>
 
-                    <button onClick={handleSaveNew} className="btn btn-primary px-4 py-1.5 text-sm" disabled={voiceStatus === 'recording'}>
-                        <Save size={16} /> Add Note
+                    <button onClick={handleSaveNew} className="btn btn-primary px-4 py-1.5 text-sm" disabled={voiceStatus === 'recording' || isSaving}>
+                        {isSaving ? (
+                            <>
+                                <RefreshCw size={16} className="animate-spin mr-1" />
+                                Acquiring GPS...
+                            </>
+                        ) : (
+                            <>
+                                <Save size={16} /> Add Note
+                            </>
+                        )}
                     </button>
                 </div>
             </div>

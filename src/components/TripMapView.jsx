@@ -9,6 +9,7 @@ import 'leaflet/dist/leaflet.css';
 import { saveSharedDaysPlan, getSharedDaysPlan, updateProject } from '../db';
 import { exportToExcel } from '../utils/exportUtils';
 import { useNotification } from '../context/NotificationContext';
+import { getAccurateCurrentPosition } from '../utils/geoUtils';
 
 // --- Constants ---
 const DEFAULT_HOME_POSITION = [33.58703457593024, -101.87436165377096];
@@ -378,6 +379,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
     const [endPosition, setEndPosition] = useState(DEFAULT_HOME_POSITION);
     const [endName, setEndName] = useState('Texas Tech');
     const [isEditingEnd, setIsEditingEnd] = useState(false);
+    const [isLocating, setIsLocating] = useState(false);
 
     // Derived Locations from Project
     useEffect(() => {
@@ -453,14 +455,18 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
         }
     };
 
-    const handleUseMyLocation = () => {
-        navigator.geolocation.getCurrentPosition(pos => {
-            const coords = `${pos.coords.latitude}, ${pos.coords.longitude}`;
+    const handleUseMyLocation = async () => {
+        setIsLocating(true);
+        try {
+            const pos = await getAccurateCurrentPosition();
+            const coords = `${pos.coords.latitude.toFixed(7)}, ${pos.coords.longitude.toFixed(7)}`;
             setEditLocCoords(coords);
-        }, err => {
+        } catch (err) {
             console.error(err);
-            showAlert("Could not get location.");
-        });
+            showAlert("Could not get highly accurate location: " + err.message);
+        } finally {
+            setIsLocating(false);
+        }
     };
 
     // Days Plan State
@@ -2112,8 +2118,9 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                                             onClick={handleUseMyLocation}
                                             className="btn btn-outline"
                                             title="Use My Location"
+                                            disabled={isLocating}
                                         >
-                                            <Navigation size={18} />
+                                            {isLocating ? <RotateCcw size={18} className="animate-spin" /> : <Navigation size={18} />}
                                         </button>
                                     </div>
                                 </div>
