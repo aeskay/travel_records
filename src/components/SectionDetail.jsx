@@ -6,6 +6,7 @@ import ErrorBoundary from './ErrorBoundary';
 import { useUser } from '../context/UserContext';
 import SectionActionMenu from './SectionActionMenu';
 import { printSections } from '../utils/printUtils';
+import SectionWeatherPanel from './SectionWeatherPanel';
 
 const SectionDetail = ({ section, onUpdate, allTypes, onChangeStatus, onChangeType, onDeleteSection, onEdit, onViewOnMap, isAdmin, projectId }) => {
     const { user } = useUser();
@@ -147,6 +148,9 @@ const SectionDetail = ({ section, onUpdate, allTypes, onChangeStatus, onChangeTy
                         </div>
                     </div>
                 </div>
+
+                {/* Weather Panel — between header and activity log */}
+                <SectionWeatherPanel section={section} />
 
                 {/* Main Content (Editor) - Full Width */}
                 <div className="card dashboard-main-card">

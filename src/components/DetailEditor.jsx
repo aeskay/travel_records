@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getDetails, addDetail, updateDetail, deleteDetail, addSection, subscribeToDetails } from '../db';
 import { getAccurateCurrentPosition } from '../utils/geoUtils';
+import { fetchWeather, formatWeatherString } from '../utils/weatherUtils';
 import { History, Save, Edit3, Camera, Mic, X, Image as LucideImage, Square, Trash2, Check, RotateCcw, RefreshCw } from 'lucide-react';
 import ImageResizer from './ImageResizer';
 import ImageLightbox from './ImageLightbox';
@@ -293,6 +294,7 @@ const DetailEditor = ({ section, onUpdate }) => {
         try {
             let currentCoords = null;
             let geoError = false;
+            let weatherStr = null;
             try {
                 // Use the location snapshotted at the first interaction (typing, voice button, camera button),
                 // otherwise fallback to the latest background coordinate.
@@ -307,6 +309,14 @@ const DetailEditor = ({ section, onUpdate }) => {
                 const lng = position.coords.longitude.toFixed(7);
                 const accuracy = position.coords.accuracy ? ` (±${position.coords.accuracy.toFixed(1)}m)` : '';
                 currentCoords = `${lat}, ${lng}${accuracy}`;
+
+                // Fetch weather concurrently with coordinate formatting (both use same position)
+                const [weatherResult] = await Promise.allSettled([
+                    fetchWeather(position.coords.latitude, position.coords.longitude)
+                ]);
+                if (weatherResult.status === 'fulfilled' && weatherResult.value) {
+                    weatherStr = formatWeatherString(weatherResult.value);
+                }
             } catch (err) {
                 console.warn("Could not get live location:", err);
                 geoError = true;
@@ -322,9 +332,13 @@ const DetailEditor = ({ section, onUpdate }) => {
             }
 
             const timestamp = new Date();
+            const weatherLine = weatherStr
+                ? `<div style="font-size: 0.8rem; color: hsl(var(--muted-foreground)); margin-top: 0.2rem;">🌤 ${weatherStr}</div>`
+                : '';
             const header = `
                 <div style="font-size: 0.85rem; color: hsl(var(--muted-foreground)); margin-bottom: 0.5rem; border-bottom: 1px solid hsl(var(--border)); padding-bottom: 0.25rem;">
                     <strong>${user.username}</strong> • Coords: ${currentCoords}
+                    ${weatherLine}
                 </div>
             `;
 
