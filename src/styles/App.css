@@ -205,6 +205,11 @@
     border-radius: var(--radius);
     padding: 1rem;
     overflow: hidden;
+    /* Allow text selection on all platforms (fixes Android/Pixel long-press copy) */
+    -webkit-user-select: text;
+    user-select: text;
+    touch-action: auto;
+    -webkit-touch-callout: default;
 }
 
 .timeline-content audio,

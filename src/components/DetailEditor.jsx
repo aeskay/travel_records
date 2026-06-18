@@ -738,12 +738,23 @@ const HistoryItem = ({ detail, isEditing, transcribeAudio, modelProgress, onEdit
                     className="ql-editor prose prose-sm max-w-none dark:prose-invert"
                     dangerouslySetInnerHTML={{ __html: detail.content.replace('Start Coords:', 'Coords:') }}
                     onClick={(e) => {
+                        // Only handle image taps; do not interfere with text selection on Android
                         if (e.target.tagName === 'IMG') {
-                            e.preventDefault();
-                            onImageClick(e.target.src);
+                            // Only fire if no text is currently selected (i.e. user tapped, not long-pressed to select)
+                            const sel = window.getSelection();
+                            if (!sel || sel.toString().length === 0) {
+                                e.preventDefault();
+                                onImageClick(e.target.src);
+                            }
                         }
                     }}
-                    style={{ cursor: 'default' }}
+                    style={{
+                        cursor: 'text',
+                        userSelect: 'text',
+                        WebkitUserSelect: 'text',
+                        touchAction: 'auto',
+                        WebkitTouchCallout: 'default',
+                    }}
                 />
             )}
         </div>
