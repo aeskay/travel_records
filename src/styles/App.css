@@ -179,6 +179,8 @@
     border-left: 2px solid hsl(var(--border));
     margin-left: 1rem;
     margin-top: 1.5rem;
+    /* pan-y: Android intercepts only vertical scroll, leaves long-press for text selection */
+    touch-action: pan-y;
 }
 
 .timeline-item {
@@ -204,11 +206,14 @@
     border: 1px solid hsl(var(--border));
     border-radius: var(--radius);
     padding: 1rem;
-    overflow: hidden;
-    /* Allow text selection on all platforms (fixes Android/Pixel long-press copy) */
+    /* overflow:hidden was clipping Android's text-selection highlight, causing long-press to cancel.
+       Use overflow-x:hidden + overflow-y:visible instead so selection can render unclipped. */
+    overflow-x: hidden;
+    overflow-y: visible;
+    /* Explicitly allow text selection on all platforms (critical for Android/Pixel) */
     -webkit-user-select: text;
     user-select: text;
-    touch-action: auto;
+    touch-action: pan-y;
     -webkit-touch-callout: default;
 }
 
@@ -226,6 +231,15 @@
 
 .timeline-content .ql-editor img:hover {
     opacity: 0.8;
+}
+
+/* Explicitly make rendered note content selectable — critical for Android/Pixel long-press copy */
+.timeline-content .ql-editor {
+    -webkit-user-select: text;
+    user-select: text;
+    touch-action: pan-y;
+    -webkit-touch-callout: default;
+    cursor: text;
 }
 
 .timeline-date {

@@ -285,7 +285,7 @@ function AppContent() {
           </div>
         </div>
 
-        <div className="h-full overflow-y-auto">
+        <div className="h-full overflow-y-auto" style={{ touchAction: 'pan-y', overscrollBehavior: 'contain' }}>
           {currentView === 'map' ? (
             <TripMapView
               sections={sections}
