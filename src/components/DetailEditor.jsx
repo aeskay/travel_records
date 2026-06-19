@@ -398,12 +398,11 @@ const DetailEditor = ({ section, onUpdate }) => {
         }
     };
 
-    const handleUpdate = async (id, newContent) => {
-        const detail = details.find(d => d.id === id);
-        if (!detail) return;
+    const handleUpdate = async (detailToUpdate, newContent) => {
+        if (!detailToUpdate) return;
 
         await updateDetail({
-            ...detail,
+            ...detailToUpdate,
             content: newContent
         }, user.username);
 
@@ -452,7 +451,7 @@ const DetailEditor = ({ section, onUpdate }) => {
                             modelProgress={modelProgress}
                             onEditStart={() => setEditingId(detail.id)}
                             onEditCancel={() => setEditingId(null)}
-                            onEditSave={(content) => handleUpdate(detail.id, content)}
+                            onEditSave={(content) => handleUpdate(detail, content)}
                             onDelete={() => handleDelete(detail.id)}
                             onImageClick={(src) => setLightboxSrc(src)}
                         />
@@ -578,8 +577,10 @@ const DetailEditor = ({ section, onUpdate }) => {
     );
 };
 
+import React from 'react';
+
 // Subcomponent for individual history items to handle edit state
-const HistoryItem = ({ detail, isEditing, transcribeAudio, modelProgress, onEditStart, onEditCancel, onEditSave, onDelete, onImageClick }) => {
+const HistoryItem = React.memo(({ detail, isEditing, transcribeAudio, modelProgress, onEditStart, onEditCancel, onEditSave, onDelete, onImageClick }) => {
     const itemRef = useRef(null);
     const [selectedImg, setSelectedImg] = useState(null);
     const [isTranscribing, setIsTranscribing] = useState(false);
@@ -759,6 +760,13 @@ const HistoryItem = ({ detail, isEditing, transcribeAudio, modelProgress, onEdit
             )}
         </div>
     );
-};
+}, (prevProps, nextProps) => {
+    // Only re-render if the specific data for this item changes
+    return prevProps.detail.id === nextProps.detail.id &&
+           prevProps.detail.content === nextProps.detail.content &&
+           prevProps.detail.status === nextProps.detail.status &&
+           prevProps.isEditing === nextProps.isEditing &&
+           prevProps.modelProgress === nextProps.modelProgress;
+});
 
 export default DetailEditor;
