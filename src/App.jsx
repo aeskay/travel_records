@@ -32,6 +32,7 @@ function AppContent() {
   const [currentView, setCurrentView] = useState('dashboard');
   const [currentProject, setCurrentProject] = useState(null);
   const lastBackPressRef = useRef(0);
+  const [pendingSection, setPendingSection] = useState(null);
 
   // Sync state with history for back button handling
   useEffect(() => {
@@ -103,6 +104,20 @@ function AppContent() {
       }
     }
   }, [sections, selectedSection]);
+
+  // When navigating from GlobalSearch, select the pending section once sections load
+  useEffect(() => {
+    if (pendingSection && sections.length > 0) {
+      const found = sections.find(
+        s => s.docId === pendingSection.docId || s.id === pendingSection.id
+      );
+      if (found) {
+        setSelectedSection(found);
+        setCurrentView('dashboard');
+      }
+      setPendingSection(null);
+    }
+  }, [sections, pendingSection]);
 
   const handleImportComplete = () => {
     loadSections();
@@ -217,7 +232,19 @@ function AppContent() {
   if (!user) return <LoginScreen />;
 
   if (!currentProject) {
-    return <ProjectSelection user={user} onSelectProject={setCurrentProject} />;
+    return (
+      <ProjectSelection
+        user={user}
+        onSelectProject={(project) => {
+          setCurrentProject(project);
+          // pendingSection will be consumed by the useEffect below
+        }}
+        onNavigateToSection={(section) => {
+          // Defer until sections are loaded — store as pending
+          setPendingSection(section);
+        }}
+      />
+    );
   }
 
   return (

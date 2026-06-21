@@ -4,9 +4,10 @@ import { getProjects, createProject, deleteProject, updateProject, duplicateProj
 import { useUser } from '../context/UserContext';
 import { Plus, FolderOpen, Loader, Trash2, Edit2, Map, Calendar, X, Check, Wrench, User, Mail, Moon, Sun, Sunset, LogOut, Copy, CheckCheck, Activity, RotateCcw } from 'lucide-react';
 import { useNotification } from '../context/NotificationContext';
+import GlobalSearch from './GlobalSearch';
 import './ProjectSelection.css';
 
-const ProjectSelection = ({ user, onSelectProject }) => {
+const ProjectSelection = ({ user, onSelectProject, onNavigateToSection }) => {
     const { showAlert, showConfirm, showPrompt } = useNotification();
     const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -310,16 +311,13 @@ const ProjectSelection = ({ user, onSelectProject }) => {
                         </h2>
 
                         {activeTab !== 'settings' && (
-                            <div className="search-wrapper">
-                                <FolderOpen size={16} className="search-icon" />
-                                <input
-                                    type="text"
-                                    placeholder="Search trips..."
-                                    className="search-input"
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                />
-                            </div>
+                            <GlobalSearch
+                                projects={projects}
+                                onNavigate={(project, section) => {
+                                    onSelectProject(project);
+                                    if (section && onNavigateToSection) onNavigateToSection(section);
+                                }}
+                            />
                         )}
                     </div>
 
