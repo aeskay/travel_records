@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { getDetails, addDetail, updateDetail, deleteDetail, addSection, subscribeToDetails } from '../db';
 import { getAccurateCurrentPosition } from '../utils/geoUtils';
 import { fetchWeather, formatWeatherString } from '../utils/weatherUtils';
-import { History, Save, Edit3, Camera, Mic, X, Image as LucideImage, Square, Trash2, Check, RotateCcw, RefreshCw } from 'lucide-react';
+import { History, Save, Edit3, Camera, Mic, X, Image as LucideImage, Square, Trash2, Check, RotateCcw, RefreshCw, Bold, Italic, Underline, Link, List, ListOrdered, RemoveFormatting, Strikethrough } from 'lucide-react';
 import ImageResizer from './ImageResizer';
 import ImageLightbox from './ImageLightbox';
 import { useUser } from '../context/UserContext';
@@ -468,10 +468,138 @@ const DetailEditor = ({ section, onUpdate }) => {
             </div>
 
             {/* Main Editor (Now at Bottom) */}
-            <div className="bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg shadow-sm overflow-hidden mt-auto">
+            <div className="bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg shadow-sm overflow-hidden mt-auto flex flex-col">
+                {/* Rich Text Toolbar */}
+                <div className="rich-text-toolbar">
+                    <button
+                        type="button"
+                        className="rich-text-btn"
+                        title="Bold"
+                        onMouseDown={(e) => {
+                            e.preventDefault();
+                            document.execCommand('bold', false, null);
+                        }}
+                    >
+                        <Bold size={16} />
+                    </button>
+                    <button
+                        type="button"
+                        className="rich-text-btn"
+                        title="Italic"
+                        onMouseDown={(e) => {
+                            e.preventDefault();
+                            document.execCommand('italic', false, null);
+                        }}
+                    >
+                        <Italic size={16} />
+                    </button>
+                    <button
+                        type="button"
+                        className="rich-text-btn"
+                        title="Underline"
+                        onMouseDown={(e) => {
+                            e.preventDefault();
+                            document.execCommand('underline', false, null);
+                        }}
+                    >
+                        <Underline size={16} />
+                    </button>
+                    <button
+                        type="button"
+                        className="rich-text-btn"
+                        title="Strikethrough"
+                        onMouseDown={(e) => {
+                            e.preventDefault();
+                            document.execCommand('strikeThrough', false, null);
+                        }}
+                    >
+                        <Strikethrough size={16} />
+                    </button>
+                    
+                    <div className="rich-text-divider"></div>
+                    
+                    <button
+                        type="button"
+                        className="rich-text-btn"
+                        title="Hyperlink"
+                        onMouseDown={(e) => {
+                            e.preventDefault();
+                            const sel = window.getSelection();
+                            let savedRange = null;
+                            if (sel.rangeCount > 0) {
+                                savedRange = sel.getRangeAt(0);
+                            }
+                            const url = prompt("Enter link URL (e.g., https://example.com):");
+                            if (url) {
+                                if (savedRange) {
+                                    sel.removeAllRanges();
+                                    sel.addRange(savedRange);
+                                }
+                                const cleanUrl = url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`;
+                                if (sel.isCollapsed) {
+                                    const linkHtml = `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+                                    insertHtmlAtCursor(linkHtml);
+                                } else {
+                                    document.execCommand('createLink', false, cleanUrl);
+                                    setTimeout(() => {
+                                        if (editorRef.current) {
+                                            const links = editorRef.current.querySelectorAll('a:not([target="_blank"])');
+                                            links.forEach(link => {
+                                                link.setAttribute('target', '_blank');
+                                                link.setAttribute('rel', 'noopener noreferrer');
+                                            });
+                                        }
+                                    }, 10);
+                                }
+                            }
+                        }}
+                    >
+                        <Link size={16} />
+                    </button>
+                    
+                    <div className="rich-text-divider"></div>
+                    
+                    <button
+                        type="button"
+                        className="rich-text-btn"
+                        title="Bullet List"
+                        onMouseDown={(e) => {
+                            e.preventDefault();
+                            document.execCommand('insertUnorderedList', false, null);
+                        }}
+                    >
+                        <List size={16} />
+                    </button>
+                    <button
+                        type="button"
+                        className="rich-text-btn"
+                        title="Numbered List"
+                        onMouseDown={(e) => {
+                            e.preventDefault();
+                            document.execCommand('insertOrderedList', false, null);
+                        }}
+                    >
+                        <ListOrdered size={16} />
+                    </button>
+                    
+                    <div className="rich-text-divider"></div>
+                    
+                    <button
+                        type="button"
+                        className="rich-text-btn"
+                        title="Clear Formatting"
+                        onMouseDown={(e) => {
+                            e.preventDefault();
+                            document.execCommand('removeFormat', false, null);
+                        }}
+                    >
+                        <RemoveFormatting size={16} />
+                    </button>
+                </div>
+
                 <div
                     ref={editorRef}
-                    className="editor-input empty:before:content-[attr(placeholder)]"
+                    className="editor-input empty:before:content-[attr(placeholder)] !border-0 !rounded-none focus:!ring-0 focus:!shadow-none"
                     contentEditable
                     placeholder="Add details, images, or voice notes..."
                     onClick={handleEditorClick}
@@ -716,10 +844,137 @@ const HistoryItem = React.memo(({ detail, isEditing, transcribeAudio, modelProgr
             </div>
 
             {isEditing ? (
-                <div className="relative">
+                <div className="relative flex flex-col border border-[hsl(var(--border))] rounded-md overflow-hidden bg-[hsl(var(--card))]">
+                    {/* Inline Formatting Toolbar */}
+                    <div className="rich-text-toolbar !p-1 !border-0 !border-b !border-[hsl(var(--border))]">
+                        <button
+                            type="button"
+                            className="rich-text-btn !p-1"
+                            title="Bold"
+                            onMouseDown={(e) => {
+                                e.preventDefault();
+                                document.execCommand('bold', false, null);
+                            }}
+                        >
+                            <Bold size={14} />
+                        </button>
+                        <button
+                            type="button"
+                            className="rich-text-btn !p-1"
+                            title="Italic"
+                            onMouseDown={(e) => {
+                                e.preventDefault();
+                                document.execCommand('italic', false, null);
+                            }}
+                        >
+                            <Italic size={14} />
+                        </button>
+                        <button
+                            type="button"
+                            className="rich-text-btn !p-1"
+                            title="Underline"
+                            onMouseDown={(e) => {
+                                e.preventDefault();
+                                document.execCommand('underline', false, null);
+                            }}
+                        >
+                            <Underline size={14} />
+                        </button>
+                        <button
+                            type="button"
+                            className="rich-text-btn !p-1"
+                            title="Strikethrough"
+                            onMouseDown={(e) => {
+                                e.preventDefault();
+                                document.execCommand('strikeThrough', false, null);
+                            }}
+                        >
+                            <Strikethrough size={14} />
+                        </button>
+                        
+                        <div className="rich-text-divider !h-4 !mx-0.5"></div>
+                        
+                        <button
+                            type="button"
+                            className="rich-text-btn !p-1"
+                            title="Hyperlink"
+                            onMouseDown={(e) => {
+                                e.preventDefault();
+                                const sel = window.getSelection();
+                                let savedRange = null;
+                                if (sel.rangeCount > 0) {
+                                    savedRange = sel.getRangeAt(0);
+                                }
+                                const url = prompt("Enter link URL (e.g., https://example.com):");
+                                if (url) {
+                                    if (savedRange) {
+                                        sel.removeAllRanges();
+                                        sel.addRange(savedRange);
+                                    }
+                                    const cleanUrl = url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`;
+                                    if (sel.isCollapsed) {
+                                        const linkHtml = `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+                                        document.execCommand('insertHTML', false, linkHtml);
+                                    } else {
+                                        document.execCommand('createLink', false, cleanUrl);
+                                        setTimeout(() => {
+                                            if (itemRef.current) {
+                                                const links = itemRef.current.querySelectorAll('a:not([target="_blank"])');
+                                                links.forEach(link => {
+                                                    link.setAttribute('target', '_blank');
+                                                    link.setAttribute('rel', 'noopener noreferrer');
+                                                });
+                                            }
+                                        }, 10);
+                                    }
+                                }
+                            }}
+                        >
+                            <Link size={14} />
+                        </button>
+                        
+                        <div className="rich-text-divider !h-4 !mx-0.5"></div>
+                        
+                        <button
+                            type="button"
+                            className="rich-text-btn !p-1"
+                            title="Bullet List"
+                            onMouseDown={(e) => {
+                                e.preventDefault();
+                                document.execCommand('insertUnorderedList', false, null);
+                            }}
+                        >
+                            <List size={14} />
+                        </button>
+                        <button
+                            type="button"
+                            className="rich-text-btn !p-1"
+                            title="Numbered List"
+                            onMouseDown={(e) => {
+                                e.preventDefault();
+                                document.execCommand('insertOrderedList', false, null);
+                            }}
+                        >
+                            <ListOrdered size={14} />
+                        </button>
+                        
+                        <div className="rich-text-divider !h-4 !mx-0.5"></div>
+                        
+                        <button
+                            type="button"
+                            className="rich-text-btn !p-1"
+                            title="Clear Formatting"
+                            onMouseDown={(e) => {
+                                e.preventDefault();
+                                document.execCommand('removeFormat', false, null);
+                            }}
+                        >
+                            <RemoveFormatting size={14} />
+                        </button>
+                    </div>
                     <div
                         ref={itemRef}
-                        className="min-h-[60px] p-2 outline-none bg-[hsl(var(--background))] rounded-md"
+                        className="min-h-[80px] p-2 outline-none bg-[hsl(var(--background))] focus:!ring-0 focus:!shadow-none"
                         contentEditable
                         onClick={handleClick}
                     />
