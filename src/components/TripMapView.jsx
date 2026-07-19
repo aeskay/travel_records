@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
-import { ArrowLeft, MapPin, Navigation, CheckCircle, Clock, ExternalLink, Building2, Route, Home, Hash, Trash2, Save, Landmark, Calendar, Plus, X, ChevronDown, ChevronUp, Eye, EyeOff, Printer, Download, FileSpreadsheet, Zap, RotateCcw, ListOrdered, ArrowDown, Check, Flag, Edit2, Menu } from 'lucide-react';
+import { ArrowLeft, MapPin, Navigation, CheckCircle, Clock, ExternalLink, Building2, Route, Home, Hash, Trash2, Save, Landmark, Calendar, Plus, X, ChevronDown, ChevronUp, Eye, EyeOff, Printer, Download, FileSpreadsheet, Zap, RotateCcw, ListOrdered, ArrowDown, Check, Flag, Edit2, Menu, Search } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -54,9 +54,9 @@ const createSequenceIcon = (number, color, borderColor) => {
 const startIcon = L.divIcon({
     className: 'custom-map-marker',
     html: `<div class="sequence-marker" style="
-        background: #22c55e;
-        border: 2px solid #16a34a;
-        box-shadow: 0 0 8px #22c55eaa, 0 2px 6px rgba(0,0,0,0.4);
+        background: #a855f7;
+        border: 2px solid #9333ea;
+        box-shadow: 0 0 8px #a855f7aa, 0 2px 6px rgba(0,0,0,0.4);
     ">A</div>`,
     iconSize: [26, 26],
     iconAnchor: [13, 13],
@@ -233,9 +233,9 @@ const fetchOSRMRouteWithDuration = async (waypoints) => {
 
 // --- Sequence Editor Sub-component ---
 const SequenceEditor = ({ section, onUpdateSequence, onRemoveFromRoute, isAdmin }) => {
-    if (!isAdmin) return null;
     const [seqValue, setSeqValue] = useState(section.test_sequence || '');
     const [saving, setSaving] = useState(false);
+    if (!isAdmin) return null;
 
     const handleSave = async () => {
         setSaving(true);
@@ -1393,8 +1393,194 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
             click: () => {
                 onSelectSection(null);
             },
+            contextmenu: (e) => {
+                const { lat, lng } = e.latlng;
+                const coordString = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+                navigator.clipboard.writeText(coordString)
+                    .then(() => showAlert(`Coordinates copied: ${coordString}`, 'success'))
+                    .catch(() => showAlert('Failed to copy coordinates', 'error'));
+            }
         });
         return null;
+    };
+
+    // Search control component
+    const MapSearchControl = () => {
+        const map = useMap();
+        const [query, setQuery] = useState('');
+        const [isSearching, setIsSearching] = useState(false);
+        const [suggestions, setSuggestions] = useState([]);
+        const [showSuggestions, setShowSuggestions] = useState(false);
+        const [searchMarker, setSearchMarker] = useState(null);
+
+        // Auto-complete fetch
+        useEffect(() => {
+            const fetchSuggestions = async () => {
+                if (!query.trim() || query.length < 3) {
+                    setSuggestions([]);
+                    return;
+                }
+                const coordRegex = /^\\s*(-?\\d+(\\.\\d+)?)\\s*,\\s*(-?\\d+(\\.\\d+)?)\\s*$/;
+                if (query.match(coordRegex)) return;
+
+                try {
+                    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`);
+                    const data = await res.json();
+                    setSuggestions(data || []);
+                } catch (err) {
+                    console.error("Autocomplete error:", err);
+                }
+            };
+
+            const timeoutId = setTimeout(fetchSuggestions, 500);
+            return () => clearTimeout(timeoutId);
+        }, [query]);
+
+        const handleSelectLocation = (lat, lng) => {
+            const latNum = parseFloat(lat);
+            const lngNum = parseFloat(lng);
+            if (!isNaN(latNum) && !isNaN(lngNum)) {
+                map.setView([latNum, lngNum], 14);
+                setSearchMarker([latNum, lngNum]);
+            }
+            setShowSuggestions(false);
+        };
+
+        const handleClear = () => {
+            setQuery('');
+            setSearchMarker(null);
+            setSuggestions([]);
+            setShowSuggestions(false);
+        };
+
+        const handleSearch = async (e) => {
+            e.preventDefault();
+            if (!query.trim()) return;
+
+            setIsSearching(true);
+            try {
+                const coordRegex = /^\\s*(-?\\d+(\\.\\d+)?)\\s*,\\s*(-?\\d+(\\.\\d+)?)\\s*$/;
+                const match = query.match(coordRegex);
+                if (match) {
+                    handleSelectLocation(match[1], match[3]);
+                    return;
+                }
+
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`);
+                const data = await res.json();
+                
+                if (data && data.length > 0) {
+                    handleSelectLocation(data[0].lat, data[0].lon);
+                } else {
+                    showAlert('Location not found', 'error');
+                }
+            } catch (error) {
+                console.error("Search error:", error);
+                showAlert('Search failed', 'error');
+            } finally {
+                setIsSearching(false);
+            }
+        };
+
+        // Render search bar as absolute element over map, using Leaflet classes
+        return (
+            <>
+                <div className="leaflet-top leaflet-right" style={{ marginTop: '10px', marginRight: '50px', zIndex: 1000, pointerEvents: 'auto' }}>
+                    <div className="leaflet-control leaflet-bar" style={{ position: 'relative' }}>
+                        <form onSubmit={handleSearch} style={{ display: 'flex', background: 'var(--bg-primary, white)', borderRadius: '4px', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>
+                            <input 
+                                type="text" 
+                                value={query}
+                                onChange={(e) => {
+                                    setQuery(e.target.value);
+                                    setShowSuggestions(true);
+                                }}
+                                onFocus={() => setShowSuggestions(true)}
+                                placeholder="Search location..."
+                                style={{
+                                    border: 'none',
+                                    padding: '8px 12px',
+                                    width: '240px',
+                                    background: 'transparent',
+                                    color: 'var(--text-primary, black)',
+                                    outline: 'none'
+                                }}
+                            />
+                            {(query || searchMarker) && (
+                                <button type="button" onClick={handleClear} style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    padding: '8px 6px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    color: 'var(--text-muted, #9ca3af)'
+                                }}>
+                                    <X size={16} />
+                                </button>
+                            )}
+                            <button type="submit" disabled={isSearching} style={{
+                                background: 'var(--primary, #3b82f6)',
+                                color: 'white',
+                                border: 'none',
+                                padding: '8px 12px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}>
+                                <Search size={16} />
+                            </button>
+                        </form>
+
+                        {/* Suggestions Dropdown */}
+                        {showSuggestions && suggestions.length > 0 && (
+                            <div style={{
+                                position: 'absolute',
+                                top: '100%',
+                                left: 0,
+                                right: 0,
+                                background: 'var(--bg-primary, white)',
+                                borderRadius: '4px',
+                                boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                                marginTop: '4px',
+                                maxHeight: '200px',
+                                overflowY: 'auto',
+                                zIndex: 1001
+                            }}>
+                                {suggestions.map((s, idx) => (
+                                    <div 
+                                        key={idx}
+                                        onClick={() => handleSelectLocation(s.lat, s.lon)}
+                                        style={{
+                                            padding: '8px 12px',
+                                            cursor: 'pointer',
+                                            borderBottom: idx < suggestions.length - 1 ? '1px solid var(--border-color, #e5e7eb)' : 'none',
+                                            fontSize: '13px',
+                                            color: 'var(--text-primary, black)',
+                                            lineHeight: '1.4'
+                                        }}
+                                        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-secondary, #f3f4f6)'}
+                                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                    >
+                                        {s.display_name}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+                {searchMarker && (
+                    <Marker 
+                        position={searchMarker} 
+                        icon={selectedIcon}
+                        zIndexOffset={3000}
+                    >
+                        <Popup>Searched Location</Popup>
+                    </Marker>
+                )}
+            </>
+        );
     };
 
     return (
@@ -1819,6 +2005,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
 
                     <FitBounds positions={allPositions} selectedPosition={selectedPosition} />
                     <MapClickHandler />
+                    <MapSearchControl />
                     <LocationMarker />
 
                     {/* Start Marker */}
