@@ -1412,6 +1412,16 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
         const [suggestions, setSuggestions] = useState([]);
         const [showSuggestions, setShowSuggestions] = useState(false);
         const [searchMarker, setSearchMarker] = useState(null);
+        const containerRef = useRef(null);
+
+        // Prevent Leaflet from swallowing touch/mouse events on mobile,
+        // which causes the keyboard to immediately dismiss after opening.
+        useEffect(() => {
+            const el = containerRef.current;
+            if (!el) return;
+            L.DomEvent.disableClickPropagation(el);
+            L.DomEvent.disableScrollPropagation(el);
+        }, []);
 
         // Auto-complete fetch
         useEffect(() => {
@@ -1485,7 +1495,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
         // Render search bar as absolute element over map, using Leaflet classes
         return (
             <>
-                <div className="leaflet-top leaflet-right" style={{ marginTop: '10px', marginRight: '50px', zIndex: 1000, pointerEvents: 'auto' }}>
+                <div ref={containerRef} className="leaflet-top leaflet-right" style={{ marginTop: '10px', marginRight: '50px', zIndex: 1000, pointerEvents: 'auto' }}>
                     <div className="leaflet-control leaflet-bar" style={{ position: 'relative' }}>
                         <form onSubmit={handleSearch} style={{ display: 'flex', background: 'var(--bg-primary, white)', borderRadius: '4px', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>
                             <input 
