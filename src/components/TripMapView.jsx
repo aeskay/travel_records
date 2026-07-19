@@ -370,6 +370,9 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
     const allTypes = useMemo(() => [...new Set(sections.map(s => s.type).filter(Boolean))], [sections]);
     const [routeGeometry, setRouteGeometry] = useState(null);
 
+    const [mapInstance, setMapInstance] = useState(null);
+    const [searchMarker, setSearchMarker] = useState(null);
+
     const [routeLoading, setRouteLoading] = useState(false);
     const [showExportMenu, setShowExportMenu] = useState(false);
 
@@ -1404,14 +1407,12 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
         return null;
     };
 
-    // Search control component
-    const MapSearchControl = () => {
-        const map = useMap();
+    // Search control component (rendered outside MapContainer to prevent Leaflet from stealing touch focus)
+    const MapSearchControl = ({ mapInstance, searchMarker, setSearchMarker }) => {
         const [query, setQuery] = useState('');
         const [isSearching, setIsSearching] = useState(false);
         const [suggestions, setSuggestions] = useState([]);
         const [showSuggestions, setShowSuggestions] = useState(false);
-        const [searchMarker, setSearchMarker] = useState(null);
         const containerRef = useRef(null);
 
         // Prevent Leaflet from swallowing touch/mouse events on mobile,
@@ -1450,7 +1451,9 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
             const latNum = parseFloat(lat);
             const lngNum = parseFloat(lng);
             if (!isNaN(latNum) && !isNaN(lngNum)) {
-                map.setView([latNum, lngNum], 14);
+                if (mapInstance) {
+                    mapInstance.setView([latNum, lngNum], 14);
+                }
                 setSearchMarker([latNum, lngNum]);
             }
             setShowSuggestions(false);
@@ -1492,12 +1495,11 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
             }
         };
 
-        // Render search bar as absolute element over map, using Leaflet classes
+        // Render search bar as absolute element over map
         return (
-            <>
-                <div ref={containerRef} className="leaflet-top leaflet-right" style={{ marginTop: '10px', marginRight: '50px', zIndex: 1000, pointerEvents: 'auto' }}>
-                    <div className="leaflet-control leaflet-bar" style={{ position: 'relative' }}>
-                        <form onSubmit={handleSearch} style={{ display: 'flex', background: 'var(--bg-primary, white)', borderRadius: '4px', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>
+            <div ref={containerRef} style={{ position: 'absolute', top: '10px', right: '50px', zIndex: 1000, pointerEvents: 'auto' }}>
+                <div style={{ position: 'relative' }}>
+                    <form onSubmit={handleSearch} style={{ display: 'flex', background: 'var(--bg-primary, white)', borderRadius: '4px', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>
                             <input 
                                 type="text" 
                                 value={query}
@@ -1580,16 +1582,21 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                         )}
                     </div>
                 </div>
-                {searchMarker && (
-                    <Marker 
-                        position={searchMarker} 
-                        icon={selectedIcon}
-                        zIndexOffset={3000}
-                    >
-                        <Popup>Searched Location</Popup>
-                    </Marker>
-                )}
-            </>
+            </div>
+        );
+    };
+
+    // Rendered inside MapContainer
+    const MapSearchMarker = ({ searchMarker }) => {
+        if (!searchMarker) return null;
+        return (
+            <Marker 
+                position={searchMarker} 
+                icon={selectedIcon}
+                zIndexOffset={3000}
+            >
+                <Popup>Searched Location</Popup>
+            </Marker>
         );
     };
 
@@ -1999,11 +2006,13 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
             )}
 
             {/* Map */}
-            <div className="trip-map-wrapper">
+            <div className="trip-map-wrapper" style={{ position: 'relative', height: '100%', width: '100%' }}>
+                <MapSearchControl mapInstance={mapInstance} searchMarker={searchMarker} setSearchMarker={setSearchMarker} />
                 <MapContainer
+                    ref={setMapInstance}
                     center={startPosition}
                     zoom={6}
-                    style={{ height: '100%', width: '100%' }}
+                    style={{ height: '100%', width: '100%', zIndex: 1 }}
                     zoomControl={true}
                 >
                     <TileLayer
@@ -2015,7 +2024,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
 
                     <FitBounds positions={allPositions} selectedPosition={selectedPosition} />
                     <MapClickHandler />
-                    <MapSearchControl />
+                    <MapSearchMarker searchMarker={searchMarker} />
                     <LocationMarker />
 
                     {/* Start Marker */}
