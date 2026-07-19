@@ -1520,7 +1520,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                                 </button>
                             )}
                             <button type="submit" disabled={isSearching} style={{
-                                background: 'var(--primary, #3b82f6)',
+                                background: '#3b82f6',
                                 color: 'white',
                                 border: 'none',
                                 padding: '8px 12px',
@@ -2247,7 +2247,7 @@ const TripMapView = ({ sections, selectedSection, onSelectSection, onBack, onUpd
                                 <span>Pending</span>
                             </div>
                             <div className="legend-item">
-                                <span className="legend-dot" style={{ background: '#22c55e', borderColor: '#16a34a' }}></span>
+                                <span className="legend-dot" style={{ background: '#a855f7', borderColor: '#9333ea' }}></span>
                                 <span>Start ({startName})</span>
                             </div>
                             <div className="legend-item">
