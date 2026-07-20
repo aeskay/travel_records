@@ -79,6 +79,16 @@ const evaluatedIcon = createMarkerIcon('#22c55e', '#911f13ff');
 const pendingIcon = createMarkerIcon('#f59e0b', '#d97706');
 const selectedIcon = createMarkerIcon('#3b82f6', '#2563eb');
 
+const searchPinIcon = L.divIcon({
+    className: 'custom-search-pin',
+    html: `<svg viewBox="0 0 24 24" width="36" height="36" fill="#ef4444" stroke="white" stroke-width="1.5" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0px 3px 3px rgba(0,0,0,0.4));">
+        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+    </svg>`,
+    iconSize: [36, 36],
+    iconAnchor: [18, 36],
+    popupAnchor: [0, -36],
+});
+
 // --- Category Color Palette ---
 const CATEGORY_COLORS = [
     '#6366f1', '#ec4899', '#14b8a6', '#f97316', '#d54545ff',
@@ -537,7 +547,7 @@ const MapSearchMarker = ({ searchMarker }) => {
     return (
         <Marker 
             position={searchMarker} 
-            icon={selectedIcon}
+            icon={searchPinIcon}
             zIndexOffset={3000}
         >
             <Popup>Searched Location</Popup>
