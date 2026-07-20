@@ -368,14 +368,7 @@ const MapSearchControl = ({ mapInstance, searchMarker, setSearchMarker, showAler
     const [showSuggestions, setShowSuggestions] = useState(false);
     const containerRef = useRef(null);
 
-    // Prevent Leaflet from swallowing touch/mouse events on mobile,
-    // which causes the keyboard to immediately dismiss after opening.
-    useEffect(() => {
-        const el = containerRef.current;
-        if (!el) return;
-        L.DomEvent.disableClickPropagation(el);
-        L.DomEvent.disableScrollPropagation(el);
-    }, []);
+
 
     // Auto-complete fetch
     useEffect(() => {
