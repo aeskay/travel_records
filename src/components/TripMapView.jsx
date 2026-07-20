@@ -528,7 +528,6 @@ const MapSearchControl = ({ mapInstance, searchMarker, setSearchMarker, showAler
                     )}
                 </div>
             </div>
-        </div>
     );
 };
 
