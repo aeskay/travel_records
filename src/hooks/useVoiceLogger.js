@@ -173,7 +173,8 @@ export function useVoiceLogger() {
         const mimeType = preferredTypes.find((t) => MediaRecorder.isTypeSupported(t)) ?? '';
         mimeTypeRef.current = mimeType || 'audio/webm';
 
-        const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+        const recorderOptions = mimeType ? { mimeType, audioBitsPerSecond: 12000 } : { audioBitsPerSecond: 12000 };
+        const recorder = new MediaRecorder(stream, recorderOptions);
         audioChunksRef.current = [];
 
         recorder.ondataavailable = (e) => {

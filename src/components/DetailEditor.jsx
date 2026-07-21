@@ -251,35 +251,6 @@ const DetailEditor = ({ section, onUpdate }) => {
 
     // --- CRUD Handlers ---
 
-    // Re-compress all images in HTML to fit within Firestore limit
-    const recompressContent = (html) => {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        const images = doc.querySelectorAll('img[src^="data:"]');
-        images.forEach(img => {
-            const canvas = document.createElement('canvas');
-            const tmpImg = new Image();
-            tmpImg.src = img.src;
-            let w = Math.min(tmpImg.naturalWidth || 400, 400);
-            let h = (w / (tmpImg.naturalWidth || 400)) * (tmpImg.naturalHeight || 300);
-            canvas.width = w;
-            canvas.height = h;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(tmpImg, 0, 0, w, h);
-            img.src = canvas.toDataURL('image/jpeg', 0.25);
-        });
-        // Strip audio if still too large (text-only fallback)
-        const result = doc.body.innerHTML;
-        if (new Blob([result]).size > 900_000) {
-            doc.querySelectorAll('audio').forEach(a => {
-                const note = document.createElement('em');
-                note.textContent = '[Audio removed — recording was too large]';
-                a.replaceWith(note);
-            });
-            return doc.body.innerHTML;
-        }
-        return result;
-    };
 
     const handleSaveNew = async () => {
         // Remove isSaving check to allow multiple sends
@@ -342,9 +313,11 @@ const DetailEditor = ({ section, onUpdate }) => {
                 </div>
             `;
 
-            // If content is too large for Firestore, re-compress images inline
-            if (new Blob([header + content]).size > 900_000) {
-                content = recompressContent(content);
+            // If content is too large for Firestore, alert the user to prevent silent data loss
+            if (new Blob([header + content]).size > 950_000) {
+                if (showAlert) showAlert("Note is too large to save! Please delete some images or audio to stay under the 1MB limit.", "error");
+                setIsSaving(false);
+                return;
             }
 
             const newDetail = {
