@@ -9,6 +9,7 @@ import { useUser } from '../context/UserContext';
 import { useNotification } from '../context/NotificationContext';
 import { useVoiceLogger } from '../hooks/useVoiceLogger';
 import { useLocation } from '../context/LocationContext';
+import { saveLocalMedia } from '../utils/mediaStore';
 
 const DetailEditor = ({ section, onUpdate }) => {
     const { user } = useUser();
@@ -136,19 +137,18 @@ const DetailEditor = ({ section, onUpdate }) => {
                 const blob = await stopRecording();
                 if (!blob) return;
 
-                const reader = new FileReader();
-                reader.readAsDataURL(blob);
-                reader.onloadend = () => {
-                    const base64Audio = reader.result;
-                    const audioHtml = `
-                        <br/>
-                        <div class="audio-note-container" style="border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 0.5rem; background: hsl(var(--card)); margin: 0.5rem 0;">
-                            <audio controls src="${base64Audio}" style="width: 100%; margin-bottom: 0.5rem;"></audio>
-                        </div>
-                        <br/>
-                    `;
-                    insertHtmlAtCursor(audioHtml);
-                };
+                const mediaId = crypto.randomUUID();
+                await saveLocalMedia(mediaId, blob, 'audio');
+                const localUrl = URL.createObjectURL(blob);
+
+                const audioHtml = `
+                    <br/>
+                    <div class="audio-note-container" style="border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 0.5rem; background: hsl(var(--card)); margin: 0.5rem 0;">
+                        <audio controls src="${localUrl}" data-media-id="${mediaId}" style="width: 100%; margin-bottom: 0.5rem;"></audio>
+                    </div>
+                    <br/>
+                `;
+                insertHtmlAtCursor(audioHtml);
             } catch (err) {
                 console.error("Failed to stop recording:", err);
                 showAlert("Recording failed to stop properly.");
@@ -228,8 +228,10 @@ const DetailEditor = ({ section, onUpdate }) => {
         const file = e.target.files[0];
         if (!file) return;
 
-        const dataUrl = await compressImage(file);
-        const imgHtml = `<img src="${dataUrl}" style="max-width: 100%; width: 200px; border-radius: 8px; margin: 0.5rem 0;" /><br/>`;
+        const mediaId = crypto.randomUUID();
+        await saveLocalMedia(mediaId, file, 'image');
+        const localUrl = URL.createObjectURL(file);
+        const imgHtml = `<img src="${localUrl}" data-media-id="${mediaId}" style="max-width: 100%; width: 200px; border-radius: 8px; margin: 0.5rem 0;" /><br/>`;
         insertHtmlAtCursor(imgHtml);
         e.target.value = '';
     };
@@ -313,9 +315,23 @@ const DetailEditor = ({ section, onUpdate }) => {
                 </div>
             `;
 
-            // If content is too large for Firestore, alert the user to prevent silent data loss
+            // Extract data-media-id to prepare for offline sync queue
+            let pendingMedia = [];
+            // Replace temporary blob URLs in images
+            content = content.replace(/<img[^>]*data-media-id="([^"]+)"[^>]*>/gi, (match, id) => {
+                pendingMedia.push(id);
+                // Strip the huge local blob URL and data-media-id entirely, replace with local-media:// protocol
+                return match.replace(/src="[^"]+"/, `src="local-media://${id}"`).replace(/data-media-id="[^"]+"/, '');
+            });
+            // Replace temporary blob URLs in audio
+            content = content.replace(/<audio[^>]*data-media-id="([^"]+)"[^>]*><\/audio>/gi, (match, id) => {
+                pendingMedia.push(id);
+                return match.replace(/src="[^"]+"/, `src="local-media://${id}"`).replace(/data-media-id="[^"]+"/, '');
+            });
+
+            // If content is too large for Firestore even after stripping huge blobs, alert the user to prevent silent data loss
             if (new Blob([header + content]).size > 950_000) {
-                if (showAlert) showAlert("Note is too large to save! Please delete some images or audio to stay under the 1MB limit.", "error");
+                if (showAlert) showAlert("Note is too large to save! Please delete some text or embedded base64 items to stay under the 1MB limit.", "error");
                 setIsSaving(false);
                 return;
             }
@@ -324,6 +340,8 @@ const DetailEditor = ({ section, onUpdate }) => {
                 sectionId: section.docId,
                 content: header + content,
                 timestamp: timestamp.toISOString(),
+                pendingMedia: pendingMedia,
+                hasPendingMedia: pendingMedia.length > 0
             };
 
             // Optimistic Update: Show immediately with pending status
@@ -685,6 +703,48 @@ const HistoryItem = React.memo(({ detail, isEditing, transcribeAudio, modelProgr
     const itemRef = useRef(null);
     const [selectedImg, setSelectedImg] = useState(null);
     const [isTranscribing, setIsTranscribing] = useState(false);
+    const [hydratedContent, setHydratedContent] = useState(detail.content);
+
+    useEffect(() => {
+        let isMounted = true;
+        const hydrateMedia = async () => {
+            let html = detail.content;
+            if (html.includes('local-media://')) {
+                const mediaStore = await import('../utils/mediaStore');
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                
+                // Hydrate images
+                const imgs = doc.querySelectorAll('img[src^="local-media://"]');
+                for (const img of imgs) {
+                    const id = img.src.replace('local-media://', '');
+                    const blob = await mediaStore.getLocalMedia(id);
+                    if (blob) {
+                        img.src = URL.createObjectURL(blob);
+                    } else {
+                        img.alt = 'Media syncing from another device...';
+                        img.style.opacity = 0.5;
+                    }
+                }
+                
+                // Hydrate audio
+                const audios = doc.querySelectorAll('audio[src^="local-media://"]');
+                for (const audio of audios) {
+                    const id = audio.src.replace('local-media://', '');
+                    const blob = await mediaStore.getLocalMedia(id);
+                    if (blob) {
+                        audio.src = URL.createObjectURL(blob);
+                    }
+                }
+                
+                if (isMounted) setHydratedContent(doc.body.innerHTML);
+            } else {
+                if (isMounted) setHydratedContent(html);
+            }
+        };
+        hydrateMedia();
+        return () => { isMounted = false; };
+    }, [detail.content]);
 
     // WHISPER_SENTINEL_RE for internal filtering
     const WHISPER_SENTINEL_RE = /^\s*(\[BLANK_AUDIO\]|\[SILENCE\]|\[ Silence \]|no speech detected\.?|\(no speech\)|\.)?\s*$/i;
@@ -965,7 +1025,7 @@ const HistoryItem = React.memo(({ detail, isEditing, transcribeAudio, modelProgr
             ) : (
                 <div
                     className="ql-editor prose prose-sm max-w-none dark:prose-invert"
-                    dangerouslySetInnerHTML={{ __html: detail.content.replace('Start Coords:', 'Coords:') }}
+                    dangerouslySetInnerHTML={{ __html: hydratedContent.replace('Start Coords:', 'Coords:') }}
                     onClick={(e) => {
                         // Only handle image taps; do not interfere with text selection on Android
                         if (e.target.tagName === 'IMG') {

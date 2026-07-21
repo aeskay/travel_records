@@ -15,11 +15,13 @@ import { parseCSV } from './utils/csvImporter';
 import { UserProvider, useUser } from './context/UserContext';
 import { NotificationProvider, useNotification } from './context/NotificationContext';
 import { LocationProvider } from './context/LocationContext';
+import { useMediaSync } from './hooks/useMediaSync';
 import './index.css';
 import './styles/App.css';
 
 function AppContent() {
   const { user, loading } = useUser();
+  useMediaSync(); // Start background sync for offline media
   const { showToast } = useNotification();
   const [sections, setSections] = useState([]);
   const [selectedSection, setSelectedSection] = useState(null);
