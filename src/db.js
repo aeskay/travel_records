@@ -484,5 +484,86 @@ export const getSectionCountsForProject = async (projectId) => {
     }
 };
 
+export const cloneSectionToProject = async (section, targetProjectId, targetType, username) => {
+    if (!targetProjectId) throw new Error("Target Project ID required for cloning");
+    const sourceProjectId = section.projectId;
+    const realId = section.id;
+    const newDocId = `${targetProjectId}_${realId}`;
+    
+    // 1. Fetch source details and notes
+    const sourceDocId = `${sourceProjectId}_${realId}`;
+    const detailsQuery = query(detailsRef, where("sectionId", "==", sourceDocId));
+    const detailsSnap = await getDocs(detailsQuery);
+    const details = snapToData(detailsSnap);
+    
+    const noteId = `${sourceProjectId}_${realId}_${username}`;
+    const noteSnap = await getDoc(doc(privateNotesRef, noteId));
+    
+    const batch = writeBatch(db);
+    
+    // 2. Clone section
+    const newSectionData = {
+        ...section,
+        type: targetType || section.type,
+        projectId: targetProjectId,
+        lastModifiedBy: username,
+        lastModified: new Date().toISOString()
+    };
+    // Ensure we don't carry over the old composite docId
+    delete newSectionData.docId; 
+    
+    batch.set(doc(sectionsRef, newDocId), newSectionData, { merge: true });
+    
+    // 3. Clone details
+    for (const detail of details) {
+        const newDetailRef = doc(collection(db, 'details'));
+        const newDetailData = {
+            ...detail,
+            sectionId: newDocId,
+            projectId: targetProjectId
+        };
+        delete newDetailData.docId; // Generate new doc ID for details
+        batch.set(newDetailRef, newDetailData);
+    }
+    
+    // 4. Clone note if exists
+    if (noteSnap.exists()) {
+        const newNoteId = `${targetProjectId}_${realId}_${username}`;
+        batch.set(doc(privateNotesRef, newNoteId), {
+            ...noteSnap.data(),
+            projectId: targetProjectId,
+            sectionId: realId,
+            lastModified: new Date().toISOString()
+        });
+    }
+    
+    await batch.commit();
+    return newDocId;
+};
 
+export const moveSectionToProject = async (section, targetProjectId, targetType, username) => {
+    if (!targetProjectId) throw new Error("Target Project ID required for moving");
+    
+    // 1. Clone to target project
+    await cloneSectionToProject(section, targetProjectId, targetType, username);
+    
+    // 2. Delete from source project
+    const sourceProjectId = section.projectId;
+    const realId = section.id;
+    const sourceDocId = `${sourceProjectId}_${realId}`;
+    
+    const batch = writeBatch(db);
+    batch.delete(doc(sectionsRef, sourceDocId));
+    
+    const detailsQuery = query(detailsRef, where("sectionId", "==", sourceDocId));
+    const detailsSnap = await getDocs(detailsQuery);
+    detailsSnap.forEach(d => {
+        batch.delete(d.ref);
+    });
+    
+    const noteId = `${sourceProjectId}_${realId}_${username}`;
+    batch.delete(doc(privateNotesRef, noteId));
+    
+    await batch.commit();
+};
 

@@ -26,7 +26,9 @@ const Sidebar = ({
     onViewOnMap,
     isAdmin,
     projectName,
-    onSwitchProject
+    onSwitchProject,
+    onClone,
+    onMove
 }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [expandedGroups, setExpandedGroups] = useState({});
@@ -206,6 +208,8 @@ const Sidebar = ({
                                                     onChangeType={onChangeType}
                                                     onDelete={onDeleteSection}
                                                     onEdit={onEdit}
+                                                    onClone={onClone}
+                                                    onMove={onMove}
                                                     onViewOnMap={onViewOnMap}
                                                     isAdmin={isAdmin}
                                                 />

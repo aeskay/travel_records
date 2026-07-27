@@ -8,7 +8,7 @@ import SectionActionMenu from './SectionActionMenu';
 import { printSections } from '../utils/printUtils';
 import SectionWeatherPanel from './SectionWeatherPanel';
 
-const SectionDetail = ({ section, onUpdate, allTypes, onChangeStatus, onChangeType, onDeleteSection, onEdit, onViewOnMap, isAdmin, projectId }) => {
+const SectionDetail = ({ section, onUpdate, allTypes, onChangeStatus, onChangeType, onDeleteSection, onEdit, onClone, onMove, onViewOnMap, isAdmin, projectId }) => {
     const { user } = useUser();
     const [isUpdating, setIsUpdating] = useState(false);
     const [showPrivateNote, setShowPrivateNote] = useState(false);
@@ -103,6 +103,8 @@ const SectionDetail = ({ section, onUpdate, allTypes, onChangeStatus, onChangeTy
                                 onChangeType={onChangeType}
                                 onDelete={onDeleteSection}
                                 onEdit={onEdit}
+                                onClone={onClone}
+                                onMove={onMove}
                                 onViewOnMap={onViewOnMap}
                                 isAdmin={isAdmin}
                             />

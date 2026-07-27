@@ -10,7 +10,8 @@ import EditSectionModal from './components/EditSectionModal';
 import TripMapView from './components/TripMapView';
 import DashboardView from './components/DashboardView';
 import ProjectSelection from './components/ProjectSelection';
-import { getSections, addSections, addSection, deleteSection, getProject } from './db';
+import TransferSectionModal from './components/TransferSectionModal';
+import { getSections, addSections, addSection, deleteSection, getProject, cloneSectionToProject, moveSectionToProject } from './db';
 import { parseCSV } from './utils/csvImporter';
 import { UserProvider, useUser } from './context/UserContext';
 import { NotificationProvider, useNotification } from './context/NotificationContext';
@@ -35,6 +36,10 @@ function AppContent() {
   const [currentProject, setCurrentProject] = useState(null);
   const lastBackPressRef = useRef(0);
   const [pendingSection, setPendingSection] = useState(null);
+  
+  // Transfer modal state
+  const [transferMode, setTransferMode] = useState(null); // 'clone' or 'move'
+  const [transferSection, setTransferSection] = useState(null);
 
   // Sync state with history for back button handling
   useEffect(() => {
@@ -218,6 +223,24 @@ function AppContent() {
     loadSections();
   };
 
+  const handleTransferSubmit = async (targetProjectId, targetType) => {
+    if (!user || !transferSection || !transferMode) return;
+    
+    if (transferMode === 'clone') {
+      await cloneSectionToProject(transferSection, targetProjectId, targetType, user.username);
+      showToast("Section cloned successfully!");
+    } else if (transferMode === 'move') {
+      await moveSectionToProject(transferSection, targetProjectId, targetType, user.username);
+      showToast("Section moved successfully!");
+      if (selectedSection?.docId === transferSection.docId) {
+        setSelectedSection(null);
+      }
+    }
+    setTransferMode(null);
+    setTransferSection(null);
+    loadSections();
+  };
+
   const handleViewOnMap = (section) => {
     setSelectedSection(section);
     setCurrentView('map');
@@ -269,6 +292,8 @@ function AppContent() {
         onChangeType={handleChangeType}
         onDeleteSection={handleDeleteSection}
         onEdit={(section) => setEditingSection(section)}
+        onClone={(section) => { setTransferMode('clone'); setTransferSection(section); }}
+        onMove={(section) => { setTransferMode('move'); setTransferSection(section); }}
         allSections={sections}
         username={user?.username}
         onViewOnMap={handleViewOnMap}
@@ -350,6 +375,8 @@ function AppContent() {
                 onChangeType={handleChangeType}
                 onDeleteSection={handleDeleteSection}
                 onEdit={(section) => setEditingSection(section)}
+                onClone={(section) => { setTransferMode('clone'); setTransferSection(section); }}
+                onMove={(section) => { setTransferMode('move'); setTransferSection(section); }}
                 onViewOnMap={handleViewOnMap}
                 isAdmin={isAdmin}
                 projectId={currentProject.id}
@@ -392,6 +419,16 @@ function AppContent() {
           section={editingSection}
           onClose={() => setEditingSection(null)}
           onSave={handleEditSection}
+        />
+      )}
+
+      {transferMode && transferSection && (
+        <TransferSectionModal
+          mode={transferMode}
+          section={transferSection}
+          currentProjectId={currentProject.id}
+          onClose={() => { setTransferMode(null); setTransferSection(null); }}
+          onTransfer={handleTransferSubmit}
         />
       )}
     </div>

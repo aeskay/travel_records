@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNotification } from '../context/NotificationContext';
-import { MoreVertical, CheckCircle, Circle, Edit2, Trash2, Tag, MapPinned } from 'lucide-react';
+import { MoreVertical, CheckCircle, Circle, Edit2, Trash2, Tag, MapPinned, Copy, MoveRight } from 'lucide-react';
 
-const SectionActionMenu = ({ section, allTypes = [], onChangeStatus, onChangeType, onDelete, onEdit, onViewOnMap, isAdmin }) => {
+const SectionActionMenu = ({ section, allTypes = [], onChangeStatus, onChangeType, onDelete, onEdit, onClone, onMove, onViewOnMap, isAdmin }) => {
     const { showConfirm } = useNotification();
     const [open, setOpen] = useState(false);
     const [showTypeSubmenu, setShowTypeSubmenu] = useState(false);
@@ -224,6 +224,40 @@ const SectionActionMenu = ({ section, allTypes = [], onChangeStatus, onChangeTyp
                             >
                                 <Edit2 size={14} /> Edit Section
                             </button>
+
+                            {/* Clone */}
+                            {onClone && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); onClone(section); setOpen(false); }}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '8px',
+                                        width: '100%', padding: '8px 12px', border: 'none',
+                                        background: 'transparent', color: 'hsl(var(--foreground))',
+                                        cursor: 'pointer', fontSize: '0.875rem', textAlign: 'left'
+                                    }}
+                                    onMouseEnter={(e) => e.target.style.backgroundColor = 'hsl(var(--accent))'}
+                                    onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                                >
+                                    <Copy size={14} /> Clone Section
+                                </button>
+                            )}
+
+                            {/* Move */}
+                            {onMove && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); onMove(section); setOpen(false); }}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '8px',
+                                        width: '100%', padding: '8px 12px', border: 'none',
+                                        background: 'transparent', color: 'hsl(var(--foreground))',
+                                        cursor: 'pointer', fontSize: '0.875rem', textAlign: 'left'
+                                    }}
+                                    onMouseEnter={(e) => e.target.style.backgroundColor = 'hsl(var(--accent))'}
+                                    onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                                >
+                                    <MoveRight size={14} /> Move Section
+                                </button>
+                            )}
                         </>
                     )}
 
