@@ -24,6 +24,9 @@ const projectsRef = collection(db, 'projects');
 // Helper to snapshot to array
 const snapToData = (snap) => snap.docs.map(d => ({ id: d.id, ...d.data(), docId: d.id }));
 
+// Helper to snapshot details (ensures true doc ID is never overwritten by corrupted data)
+const detailsSnapToData = (snap) => snap.docs.map(d => ({ ...d.data(), id: d.id, docId: d.id }));
+
 // Helper to extract short ID from a potentially composite ID
 const getShortId = (section, projectId) => {
     let sid = section.id || section.docId || "";
@@ -223,7 +226,7 @@ export const getDetails = async (sectionDocId, username) => {
         where('sectionId', '==', sectionDocId),
     );
     const snap = await getDocs(q);
-    const data = snapToData(snap);
+    const data = detailsSnapToData(snap);
     return data.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 };
 
@@ -234,7 +237,7 @@ export const subscribeToDetails = (sectionDocId, username, callback) => {
     );
 
     return onSnapshot(q, (snapshot) => {
-        const data = snapToData(snapshot);
+        const data = detailsSnapToData(snapshot);
         const sortedData = data.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
         callback(sortedData);
     }, (error) => {
@@ -270,7 +273,7 @@ export const getAllData = async (username) => {
     const detailsSnap = await getDocs(detailsRef);
     return {
         sections: snapToData(sectionsSnap),
-        details: snapToData(detailsSnap)
+        details: detailsSnapToData(detailsSnap)
     };
 };
 
@@ -353,7 +356,7 @@ export const getProjectData = async (projectId) => {
     // Fetch details for these sections
     const detailsQuery = query(detailsRef, where("projectId", "==", projectId));
     const detailsSnap = await getDocs(detailsQuery);
-    const details = snapToData(detailsSnap);
+    const details = detailsSnapToData(detailsSnap);
 
     // Fetch private notes
     const notesQuery = query(privateNotesRef, where("projectId", "==", projectId));
@@ -413,11 +416,15 @@ export const restoreProjectData = async (data, targetProjectId, username) => {
         const newDetailId = detail.docId ? `${targetProjectId}_${detail.docId}` : doc(detailsRef).id;
         const newRef = doc(collection(db, 'details'));
 
-        batch.set(newRef, {
+        const newDetailData = {
             ...detail,
             sectionId: newSectionDocId,
             projectId: targetProjectId
-        });
+        };
+        delete newDetailData.docId;
+        delete newDetailData.id;
+
+        batch.set(newRef, newDetailData);
         opCount++;
         if (opCount >= 400) { await batch.commit(); opCount = 0; }
     }
@@ -494,7 +501,7 @@ export const cloneSectionToProject = async (section, targetProjectId, targetType
     const sourceDocId = `${sourceProjectId}_${realId}`;
     const detailsQuery = query(detailsRef, where("sectionId", "==", sourceDocId));
     const detailsSnap = await getDocs(detailsQuery);
-    const details = snapToData(detailsSnap);
+    const details = detailsSnapToData(detailsSnap);
     
     const noteId = `${sourceProjectId}_${realId}_${username}`;
     const noteSnap = await getDoc(doc(privateNotesRef, noteId));
@@ -522,7 +529,8 @@ export const cloneSectionToProject = async (section, targetProjectId, targetType
             sectionId: newDocId,
             projectId: targetProjectId
         };
-        delete newDetailData.docId; // Generate new doc ID for details
+        delete newDetailData.docId; // Remove old docId
+        delete newDetailData.id; // Remove old id to prevent overriding the auto-generated ID
         batch.set(newDetailRef, newDetailData);
     }
     
