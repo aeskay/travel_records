@@ -14,8 +14,9 @@ import { useLocation } from '../context/LocationContext';
 
 // --- Constants ---
 const DEFAULT_HOME_POSITION = [33.58703457593024, -101.87436165377096];
-const DARK_TILES = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-const LIGHT_TILES = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+const CARTO_KEY = import.meta.env.VITE_CARTO_API_KEY || 'cb1_3x0o_1_0e98f5ff4c4adb42019dcfeb';
+const DARK_TILES = `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png${CARTO_KEY ? `?key=${CARTO_KEY}` : ''}`;
+const LIGHT_TILES = `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png${CARTO_KEY ? `?key=${CARTO_KEY}` : ''}`;
 const OSRM_BASE = 'https://router.project-osrm.org/route/v1/driving';
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
