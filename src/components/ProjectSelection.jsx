@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { getProjects, createProject, deleteProject, updateProject, duplicateProject, getSectionCountsForProject } from '../db';
 import { useUser } from '../context/UserContext';
-import { Plus, FolderOpen, Loader, Trash2, Edit2, Map, Calendar, X, Check, Wrench, User, Mail, Moon, Sun, Sunset, LogOut, Copy, CheckCheck, Activity, RotateCcw, Filter, ArrowUpDown, Search, Clock } from 'lucide-react';
+import { Plus, FolderOpen, Loader, Trash2, Edit2, Map, Calendar, X, Check, Wrench, User, Mail, Moon, Sun, Sunset, LogOut, Copy, CheckCheck, Activity, RotateCcw, Filter, ArrowUpDown, Search, Clock, ChevronDown } from 'lucide-react';
 import { useNotification } from '../context/NotificationContext';
 import GlobalSearch from './GlobalSearch';
 import './ProjectSelection.css';
@@ -68,6 +68,7 @@ const ProjectSelection = ({ user, onSelectProject, onNavigateToSection }) => {
     const [sectionCounts, setSectionCounts] = useState({}); // { [projectId]: { total, evaluated } }
 
     // Filter & Sort states
+    const [showFilters, setShowFilters] = useState(false);
     const [creatorFilter, setCreatorFilter] = useState('all'); // 'all', '__me__', '__unknown__', or specific creator string
     const [dateFilter, setDateFilter] = useState('all'); // 'all', '7d', '30d', '90d', 'this_year', 'custom', or 'year:YYYY'
     const [customDateFrom, setCustomDateFrom] = useState('');
@@ -287,6 +288,12 @@ const ProjectSelection = ({ user, onSelectProject, onNavigateToSection }) => {
         dateFilter !== 'all' ||
         progressFilter !== 'all';
 
+    const activeFilterCount = (searchQuery.trim() !== '' ? 1 : 0) +
+        (creatorFilter !== 'all' ? 1 : 0) +
+        (dateFilter !== 'all' ? 1 : 0) +
+        (progressFilter !== 'all' ? 1 : 0) +
+        (sortBy !== 'created_desc' ? 1 : 0);
+
     const resetFilters = () => {
         setSearchQuery('');
         setCreatorFilter('all');
@@ -294,6 +301,7 @@ const ProjectSelection = ({ user, onSelectProject, onNavigateToSection }) => {
         setCustomDateFrom('');
         setCustomDateTo('');
         setProgressFilter('all');
+        setSortBy('created_desc');
     };
 
     // 5. Apply toolbar filters and sorting
@@ -538,18 +546,35 @@ const ProjectSelection = ({ user, onSelectProject, onNavigateToSection }) => {
                         </div>
 
                         {activeTab !== 'settings' && (
-                            <GlobalSearch
-                                projects={projects}
-                                onNavigate={(project, section) => {
-                                    onSelectProject(project);
-                                    if (section && onNavigateToSection) onNavigateToSection(section);
-                                }}
-                            />
+                            <div className="header-search-actions">
+                                <GlobalSearch
+                                    projects={projects}
+                                    onNavigate={(project, section) => {
+                                        onSelectProject(project);
+                                        if (section && onNavigateToSection) onNavigateToSection(section);
+                                    }}
+                                />
+                                {hasAssignedTrips && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowFilters(prev => !prev)}
+                                        className={`filter-toggle-btn ${showFilters ? 'open' : ''} ${activeFilterCount > 0 ? 'has-active' : ''}`}
+                                        title={showFilters ? 'Hide filters' : 'Show filters & sorting'}
+                                    >
+                                        <Filter size={15} />
+                                        <span>Filter</span>
+                                        {activeFilterCount > 0 && (
+                                            <span className="filter-toggle-badge">{activeFilterCount}</span>
+                                        )}
+                                        <ChevronDown size={14} className={`filter-toggle-caret ${showFilters ? 'open' : ''}`} />
+                                    </button>
+                                )}
+                            </div>
                         )}
                     </div>
 
-                    {/* Filter & Sort Toolbar */}
-                    {activeTab !== 'settings' && hasAssignedTrips && (
+                    {/* Filter & Sort Toolbar (Collapsible) */}
+                    {activeTab !== 'settings' && hasAssignedTrips && showFilters && (
                         <div className="filters-toolbar">
                             <div className="filters-row">
                                 {/* Quick "Created by Me" Toggle Pill */}
@@ -629,7 +654,7 @@ const ProjectSelection = ({ user, onSelectProject, onNavigateToSection }) => {
                                     <select
                                         value={sortBy}
                                         onChange={(e) => setSortBy(e.target.value)}
-                                        className="filter-select"
+                                        className={`filter-select ${sortBy !== 'created_desc' ? 'active' : ''}`}
                                     >
                                         <option value="created_desc">Sort: Created (Newest)</option>
                                         <option value="created_asc">Sort: Created (Oldest)</option>
@@ -651,7 +676,7 @@ const ProjectSelection = ({ user, onSelectProject, onNavigateToSection }) => {
                                     <Search size={13} className="inline-filter-icon" />
                                     <input
                                         type="text"
-                                         value={searchQuery}
+                                        value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
                                         placeholder="Filter list..."
                                         className="inline-filter-input"
@@ -669,7 +694,7 @@ const ProjectSelection = ({ user, onSelectProject, onNavigateToSection }) => {
                                 </div>
 
                                 {/* Reset Filters button */}
-                                {hasActiveFilters && (
+                                {activeFilterCount > 0 && (
                                     <button
                                         type="button"
                                         onClick={resetFilters}

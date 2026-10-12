@@ -173,6 +173,64 @@
     border-radius: 999px;
 }
 
+.header-search-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    max-width: 520px;
+    justify-content: flex-end;
+}
+
+.filter-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 37px;
+    padding: 0 13px;
+    border-radius: 12px;
+    border: 1px solid hsl(var(--border) / 0.6);
+    background-color: hsl(var(--muted) / 0.3);
+    color: hsl(var(--foreground));
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.filter-toggle-btn:hover {
+    border-color: hsl(var(--primary) / 0.5);
+    background-color: hsl(var(--muted) / 0.5);
+}
+
+.filter-toggle-btn.open,
+.filter-toggle-btn.has-active {
+    border-color: hsl(var(--primary));
+    background-color: hsl(var(--primary) / 0.14);
+    color: hsl(var(--primary));
+    font-weight: 600;
+}
+
+.filter-toggle-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+}
+
+.filter-toggle-caret {
+    transition: transform 0.2s ease;
+    opacity: 0.8;
+}
+
+.filter-toggle-caret.open {
+    transform: rotate(180deg);
+}
+
 /* Filter & Sort Toolbar */
 .filters-toolbar {
     display: flex;
@@ -183,6 +241,7 @@
     background-color: hsl(var(--card) / 0.7);
     border: 1px solid hsl(var(--border) / 0.45);
     border-radius: 14px;
+    animation: fadeIn 0.18s ease;
 }
 
 .filters-row {
@@ -936,13 +995,19 @@
 
     .content-header {
         flex-direction: column;
-        align-items: flex-start;
+        align-items: stretch;
         gap: 12px;
         margin-bottom: 4px;
     }
 
     .section-title {
         font-size: 22px;
+    }
+
+    .header-search-actions {
+        width: 100%;
+        max-width: 100%;
+        justify-content: space-between;
     }
 
     .search-wrapper {
