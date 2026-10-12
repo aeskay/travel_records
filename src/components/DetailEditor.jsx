@@ -9,7 +9,7 @@ import { useUser } from '../context/UserContext';
 import { useNotification } from '../context/NotificationContext';
 import { useVoiceLogger } from '../hooks/useVoiceLogger';
 import { useLocation } from '../context/LocationContext';
-import { saveLocalMedia } from '../utils/mediaStore';
+import { getLocalMedia } from '../utils/mediaStore';
 
 const DetailEditor = ({ section, onUpdate }) => {
     const { user } = useUser();
@@ -137,18 +137,19 @@ const DetailEditor = ({ section, onUpdate }) => {
                 const blob = await stopRecording();
                 if (!blob) return;
 
-                const mediaId = crypto.randomUUID();
-                await saveLocalMedia(mediaId, blob, 'audio');
-                const localUrl = URL.createObjectURL(blob);
-
-                const audioHtml = `
-                    <br/>
-                    <div class="audio-note-container" style="border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 0.5rem; background: hsl(var(--card)); margin: 0.5rem 0;">
-                        <audio controls src="${localUrl}" data-media-id="${mediaId}" style="width: 100%; margin-bottom: 0.5rem;"></audio>
-                    </div>
-                    <br/>
-                `;
-                insertHtmlAtCursor(audioHtml);
+                const reader = new FileReader();
+                reader.readAsDataURL(blob);
+                reader.onloadend = () => {
+                    const base64Audio = reader.result;
+                    const audioHtml = `
+                        <br/>
+                        <div class="audio-note-container" style="border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 0.5rem; background: hsl(var(--card)); margin: 0.5rem 0;">
+                            <audio controls src="${base64Audio}" style="width: 100%; margin-bottom: 0.5rem;"></audio>
+                        </div>
+                        <br/>
+                    `;
+                    insertHtmlAtCursor(audioHtml);
+                };
             } catch (err) {
                 console.error("Failed to stop recording:", err);
                 showAlert("Recording failed to stop properly.");
@@ -199,7 +200,7 @@ const DetailEditor = ({ section, onUpdate }) => {
         }
     };
 
-    const compressImage = (file, maxWidth = 600, quality = 0.4) => {
+    const compressImage = (file, maxWidth = 800, quality = 0.6) => {
         return new Promise((resolve) => {
             const img = new Image();
             const url = URL.createObjectURL(file);
@@ -208,7 +209,7 @@ const DetailEditor = ({ section, onUpdate }) => {
                 let w = img.width;
                 let h = img.height;
                 if (w > maxWidth) {
-                    h = (maxWidth / w) * h;
+                    h = Math.round((maxWidth / w) * h);
                     w = maxWidth;
                 }
                 canvas.width = w;
@@ -228,10 +229,8 @@ const DetailEditor = ({ section, onUpdate }) => {
         const file = e.target.files[0];
         if (!file) return;
 
-        const mediaId = crypto.randomUUID();
-        await saveLocalMedia(mediaId, file, 'image');
-        const localUrl = URL.createObjectURL(file);
-        const imgHtml = `<img src="${localUrl}" data-media-id="${mediaId}" style="max-width: 100%; width: 200px; border-radius: 8px; margin: 0.5rem 0;" /><br/>`;
+        const dataUrl = await compressImage(file);
+        const imgHtml = `<img src="${dataUrl}" style="max-width: 100%; width: 200px; border-radius: 8px; margin: 0.5rem 0;" /><br/>`;
         insertHtmlAtCursor(imgHtml);
         e.target.value = '';
     };
@@ -710,7 +709,6 @@ const HistoryItem = React.memo(({ detail, isEditing, transcribeAudio, modelProgr
         const hydrateMedia = async () => {
             let html = detail.content;
             if (html.includes('local-media://')) {
-                const mediaStore = await import('../utils/mediaStore');
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
                 
@@ -718,7 +716,7 @@ const HistoryItem = React.memo(({ detail, isEditing, transcribeAudio, modelProgr
                 const imgs = doc.querySelectorAll('img[src^="local-media://"]');
                 for (const img of imgs) {
                     const id = img.src.replace('local-media://', '');
-                    const blob = await mediaStore.getLocalMedia(id);
+                    const blob = await getLocalMedia(id);
                     if (blob) {
                         img.src = URL.createObjectURL(blob);
                     } else {
@@ -731,7 +729,7 @@ const HistoryItem = React.memo(({ detail, isEditing, transcribeAudio, modelProgr
                 const audios = doc.querySelectorAll('audio[src^="local-media://"]');
                 for (const audio of audios) {
                     const id = audio.src.replace('local-media://', '');
-                    const blob = await mediaStore.getLocalMedia(id);
+                    const blob = await getLocalMedia(id);
                     if (blob) {
                         audio.src = URL.createObjectURL(blob);
                     }
