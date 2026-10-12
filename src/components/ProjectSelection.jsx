@@ -1,8 +1,8 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { getProjects, createProject, deleteProject, updateProject, duplicateProject, getSectionCountsForProject } from '../db';
 import { useUser } from '../context/UserContext';
-import { Plus, FolderOpen, Loader, Trash2, Edit2, Map, Calendar, X, Check, Wrench, User, Mail, Moon, Sun, Sunset, LogOut, Copy, CheckCheck, Activity, RotateCcw } from 'lucide-react';
+import { Plus, FolderOpen, Loader, Trash2, Edit2, Map, Calendar, X, Check, Wrench, User, Mail, Moon, Sun, Sunset, LogOut, Copy, CheckCheck, Activity, RotateCcw, Filter, ArrowUpDown, Search, Clock } from 'lucide-react';
 import { useNotification } from '../context/NotificationContext';
 import GlobalSearch from './GlobalSearch';
 import './ProjectSelection.css';
@@ -23,14 +23,39 @@ const ProjectSelection = ({ user, onSelectProject, onNavigateToSection }) => {
         if (!dateStr) return '';
         // Add time to avoid timezone shifts on date-only strings
         const date = new Date(dateStr + 'T12:00:00');
+        if (isNaN(date.getTime())) return '';
         const months = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'Jun.', 'Jul.', 'Aug.', 'Sep.', 'Oct.', 'Nov.', 'Dec.'];
-        return `${months[date.getMonth()]} ${date.getDate()} ${date.getFullYear()}`;
+        return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+    };
+
+    const formatIsoDate = (isoStr) => {
+        if (!isoStr) return 'Unknown date';
+        const date = new Date(isoStr);
+        if (isNaN(date.getTime())) return 'Unknown date';
+        const months = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'Jun.', 'Jul.', 'Aug.', 'Sep.', 'Oct.', 'Nov.', 'Dec.'];
+        return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
     };
 
     const formatDateRange = (start, end) => {
         if (!start) return 'No dates set';
         if (!end || start === end) return formatDate(start);
         return `${formatDate(start)} — ${formatDate(end)}`;
+    };
+
+    const isCreatedByCurrentUser = (project) => {
+        if (!project?.createdBy || !user) return false;
+        const creator = project.createdBy.trim().toLowerCase();
+        const uname = (user.username || '').trim().toLowerCase();
+        const email = (user.email || '').trim().toLowerCase();
+        const emailPrefix = email.split('@')[0];
+        return (uname && creator === uname) ||
+            (email && creator === email) ||
+            (emailPrefix && creator === emailPrefix);
+    };
+
+    const formatCreatorLabel = (creatorStr) => {
+        if (!creatorStr) return 'Unknown';
+        return creatorStr.includes('@') ? creatorStr.split('@')[0] : creatorStr;
     };
 
     // Admin email check (case-insensitive)
@@ -41,6 +66,14 @@ const ProjectSelection = ({ user, onSelectProject, onNavigateToSection }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState('inprogress'); // 'inprogress', 'completed', 'recent', 'all', 'settings'
     const [sectionCounts, setSectionCounts] = useState({}); // { [projectId]: { total, evaluated } }
+
+    // Filter & Sort states
+    const [creatorFilter, setCreatorFilter] = useState('all'); // 'all', '__me__', '__unknown__', or specific creator string
+    const [dateFilter, setDateFilter] = useState('all'); // 'all', '7d', '30d', '90d', 'this_year', 'custom', or 'year:YYYY'
+    const [customDateFrom, setCustomDateFrom] = useState('');
+    const [customDateTo, setCustomDateTo] = useState('');
+    const [progressFilter, setProgressFilter] = useState('all'); // 'all', 'complete', 'partial', 'not_started', 'empty'
+    const [sortBy, setSortBy] = useState('created_desc'); // 'created_desc', 'created_asc', 'completed_desc', 'modified_desc', 'schedule_desc', 'schedule_asc', 'progress_desc', 'progress_asc', 'name_asc', 'name_desc'
 
     const fetchSectionCounts = async (projectList) => {
         if (!projectList || projectList.length === 0) return;
@@ -173,24 +206,205 @@ const ProjectSelection = ({ user, onSelectProject, onNavigateToSection }) => {
 
     const [editDisplayName, setEditDisplayName] = useState(user.displayName || '');
 
-    // Filter projects based on search and tab
-    const filteredProjects = projects.filter(p => {
-        const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
-        const isGlobalAdmin = user.email === 'samuel.alalade@ttu.edu';
-        const hasAccess = isGlobalAdmin ||
-            p.createdBy === user.username ||
-            (p.users && p.users.some(u => u.email === user.email)) ||
-            (!p.users && !p.createdBy);
+    // 1. Projects the user has permission to view
+    const accessibleProjects = useMemo(() => {
+        const isGlobalAdmin = user.email?.toLowerCase() === 'samuel.alalade@ttu.edu';
+        return projects.filter(p =>
+            isGlobalAdmin ||
+            isCreatedByCurrentUser(p) ||
+            (p.users && p.users.some(u => u.email?.toLowerCase() === user.email?.toLowerCase())) ||
+            (!p.users && !p.createdBy)
+        );
+    }, [projects, user]);
 
-        const isCompleted = p.status === 'completed';
-        let matchesTab = true;
-        if (activeTab === 'inprogress') matchesTab = !isCompleted;
-        else if (activeTab === 'completed') matchesTab = isCompleted;
-        else if (activeTab === 'recent') matchesTab = new Date(p.createdAt) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-        // 'all' matches everything
+    // 2. Counts per tab (before toolbar filters)
+    const tabCounts = useMemo(() => {
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        return {
+            inprogress: accessibleProjects.filter(p => p.status !== 'completed').length,
+            completed: accessibleProjects.filter(p => p.status === 'completed').length,
+            recent: accessibleProjects.filter(p => p.createdAt && new Date(p.createdAt) > thirtyDaysAgo).length,
+            all: accessibleProjects.length
+        };
+    }, [accessibleProjects]);
 
-        return matchesSearch && matchesTab && hasAccess;
-    });
+    // 3. Projects matching the active sidebar tab
+    const tabProjects = useMemo(() => {
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        return accessibleProjects.filter(p => {
+            const isCompleted = p.status === 'completed';
+            if (activeTab === 'inprogress') return !isCompleted;
+            if (activeTab === 'completed') return isCompleted;
+            if (activeTab === 'recent') return p.createdAt && new Date(p.createdAt) > thirtyDaysAgo;
+            return true; // 'all'
+        });
+    }, [accessibleProjects, activeTab]);
+
+    // 4. Unique creators & years for filter dropdowns
+    const creatorOptions = useMemo(() => {
+        const otherMap = new globalThis.Map(); // lowerKey -> display label
+        let myCount = 0;
+        let unknownCount = 0;
+
+        tabProjects.forEach(p => {
+            if (isCreatedByCurrentUser(p)) {
+                myCount++;
+            } else if (!p.createdBy || !p.createdBy.trim()) {
+                unknownCount++;
+            } else {
+                const key = p.createdBy.trim().toLowerCase();
+                const existing = otherMap.get(key);
+                if (existing) {
+                    existing.count++;
+                } else {
+                    otherMap.set(key, {
+                        value: key,
+                        label: formatCreatorLabel(p.createdBy.trim()),
+                        raw: p.createdBy.trim(),
+                        count: 1
+                    });
+                }
+            }
+        });
+
+        const others = Array.from(otherMap.values()).sort((a, b) => a.label.localeCompare(b.label));
+        return { myCount, unknownCount, others };
+    }, [tabProjects, user]);
+
+    const availableYears = useMemo(() => {
+        const years = new Set();
+        accessibleProjects.forEach(p => {
+            if (p.createdAt) {
+                const y = new Date(p.createdAt).getFullYear();
+                if (!isNaN(y)) years.add(y);
+            }
+        });
+        return Array.from(years).sort((a, b) => b - a);
+    }, [accessibleProjects]);
+
+    const hasActiveFilters = searchQuery.trim() !== '' ||
+        creatorFilter !== 'all' ||
+        dateFilter !== 'all' ||
+        progressFilter !== 'all';
+
+    const resetFilters = () => {
+        setSearchQuery('');
+        setCreatorFilter('all');
+        setDateFilter('all');
+        setCustomDateFrom('');
+        setCustomDateTo('');
+        setProgressFilter('all');
+    };
+
+    // 5. Apply toolbar filters and sorting
+    const filteredProjects = useMemo(() => {
+        const now = Date.now();
+        const q = searchQuery.trim().toLowerCase();
+
+        const filtered = tabProjects.filter(p => {
+            // Search query (name or creator)
+            if (q) {
+                const nameMatch = (p.name || '').toLowerCase().includes(q);
+                const creatorMatch = (p.createdBy || '').toLowerCase().includes(q);
+                if (!nameMatch && !creatorMatch) return false;
+            }
+
+            // Creator filter
+            if (creatorFilter === '__me__') {
+                if (!isCreatedByCurrentUser(p)) return false;
+            } else if (creatorFilter === '__unknown__') {
+                if (p.createdBy && p.createdBy.trim()) return false;
+            } else if (creatorFilter !== 'all') {
+                if ((p.createdBy || '').trim().toLowerCase() !== creatorFilter) return false;
+            }
+
+            // Creation Date filter
+            if (dateFilter !== 'all') {
+                const createdTime = p.createdAt ? new Date(p.createdAt).getTime() : NaN;
+                if (isNaN(createdTime)) return false;
+
+                if (dateFilter === '7d') {
+                    if (createdTime < now - 7 * 24 * 60 * 60 * 1000) return false;
+                } else if (dateFilter === '30d') {
+                    if (createdTime < now - 30 * 24 * 60 * 60 * 1000) return false;
+                } else if (dateFilter === '90d') {
+                    if (createdTime < now - 90 * 24 * 60 * 60 * 1000) return false;
+                } else if (dateFilter === 'this_year') {
+                    if (new Date(createdTime).getFullYear() !== new Date().getFullYear()) return false;
+                } else if (dateFilter.startsWith('year:')) {
+                    const targetYear = parseInt(dateFilter.split(':')[1], 10);
+                    if (new Date(createdTime).getFullYear() !== targetYear) return false;
+                } else if (dateFilter === 'custom') {
+                    if (customDateFrom) {
+                        const fromMs = new Date(customDateFrom + 'T00:00:00').getTime();
+                        if (!isNaN(fromMs) && createdTime < fromMs) return false;
+                    }
+                    if (customDateTo) {
+                        const toMs = new Date(customDateTo + 'T23:59:59').getTime();
+                        if (!isNaN(toMs) && createdTime > toMs) return false;
+                    }
+                }
+            }
+
+            // Evaluation Progress filter
+            if (progressFilter !== 'all') {
+                const counts = sectionCounts[p.id];
+                const total = counts?.total ?? 0;
+                const evaluated = counts?.evaluated ?? 0;
+                const pct = total > 0 ? Math.round((evaluated / total) * 100) : 0;
+
+                if (progressFilter === 'complete' && (total === 0 || pct < 100)) return false;
+                if (progressFilter === 'partial' && (total === 0 || pct === 0 || pct === 100)) return false;
+                if (progressFilter === 'not_started' && (total === 0 || pct > 0)) return false;
+                if (progressFilter === 'empty' && total > 0) return false;
+            }
+
+            return true;
+        });
+
+        // Sort
+        const getPct = (p) => {
+            const c = sectionCounts[p.id];
+            if (!c || c.total === 0) return -1;
+            return (c.evaluated / c.total) * 100;
+        };
+
+        return [...filtered].sort((a, b) => {
+            switch (sortBy) {
+                case 'created_asc':
+                    return (new Date(a.createdAt || 0).getTime() || 0) - (new Date(b.createdAt || 0).getTime() || 0);
+                case 'completed_desc':
+                    return (new Date(b.completedAt || b.lastModified || b.createdAt || 0).getTime() || 0) -
+                        (new Date(a.completedAt || a.lastModified || a.createdAt || 0).getTime() || 0);
+                case 'modified_desc':
+                    return (new Date(b.lastModified || b.createdAt || 0).getTime() || 0) -
+                        (new Date(a.lastModified || a.createdAt || 0).getTime() || 0);
+                case 'schedule_desc': {
+                    if (!a.startDate && !b.startDate) return 0;
+                    if (!a.startDate) return 1;
+                    if (!b.startDate) return -1;
+                    return b.startDate.localeCompare(a.startDate);
+                }
+                case 'schedule_asc': {
+                    if (!a.startDate && !b.startDate) return 0;
+                    if (!a.startDate) return 1;
+                    if (!b.startDate) return -1;
+                    return a.startDate.localeCompare(b.startDate);
+                }
+                case 'progress_desc':
+                    return getPct(b) - getPct(a);
+                case 'progress_asc':
+                    return getPct(a) - getPct(b);
+                case 'name_asc':
+                    return (a.name || '').localeCompare(b.name || '');
+                case 'name_desc':
+                    return (b.name || '').localeCompare(a.name || '');
+                case 'created_desc':
+                default:
+                    return (new Date(b.createdAt || 0).getTime() || 0) - (new Date(a.createdAt || 0).getTime() || 0);
+            }
+        });
+    }, [tabProjects, searchQuery, creatorFilter, dateFilter, customDateFrom, customDateTo, progressFilter, sortBy, sectionCounts]);
 
 
 
@@ -263,35 +477,39 @@ const ProjectSelection = ({ user, onSelectProject, onNavigateToSection }) => {
                             className={`sidebar-btn ${activeTab === 'inprogress' ? 'active' : ''}`}
                         >
                             <Activity size={18} />
-                            In Progress
+                            <span>In Progress</span>
+                            <span className="sidebar-count-badge">{tabCounts.inprogress}</span>
                         </button>
                         <button
                             onClick={() => setActiveTab('completed')}
                             className={`sidebar-btn ${activeTab === 'completed' ? 'active' : ''}`}
                         >
                             <CheckCheck size={18} />
-                            Completed
+                            <span>Completed</span>
+                            <span className="sidebar-count-badge">{tabCounts.completed}</span>
                         </button>
                         <button
                             onClick={() => setActiveTab('recent')}
                             className={`sidebar-btn ${activeTab === 'recent' ? 'active' : ''}`}
                         >
                             <Calendar size={18} />
-                            Recent
+                            <span>Recent</span>
+                            <span className="sidebar-count-badge">{tabCounts.recent}</span>
                         </button>
                         <button
                             onClick={() => setActiveTab('all')}
                             className={`sidebar-btn ${activeTab === 'all' ? 'active' : ''}`}
                         >
                             <FolderOpen size={18} />
-                            All Trips
+                            <span>All Trips</span>
+                            <span className="sidebar-count-badge">{tabCounts.all}</span>
                         </button>
                         <button
                             onClick={() => setActiveTab('settings')}
                             className={`sidebar-btn ${activeTab === 'settings' ? 'active' : ''}`}
                         >
                             <Wrench size={18} />
-                            Settings
+                            <span>Settings</span>
                         </button>
                     </div>
 
@@ -302,13 +520,22 @@ const ProjectSelection = ({ user, onSelectProject, onNavigateToSection }) => {
                 <div className="dashboard-content">
                     {/* Header */}
                     <div className="content-header">
-                        <h2 className="section-title">
-                            {activeTab === 'inprogress' && 'In Progress'}
-                            {activeTab === 'completed' && 'Completed Trips'}
-                            {activeTab === 'all' && 'All Trips'}
-                            {activeTab === 'recent' && 'Recent Trips'}
-                            {activeTab === 'settings' && 'Settings & Profile'}
-                        </h2>
+                        <div className="header-title-group">
+                            <h2 className="section-title">
+                                {activeTab === 'inprogress' && 'In Progress'}
+                                {activeTab === 'completed' && 'Completed Trips'}
+                                {activeTab === 'all' && 'All Trips'}
+                                {activeTab === 'recent' && 'Recent Trips'}
+                                {activeTab === 'settings' && 'Settings & Profile'}
+                            </h2>
+                            {activeTab !== 'settings' && (
+                                <span className="results-counter">
+                                    {hasActiveFilters
+                                        ? `${filteredProjects.length} of ${tabProjects.length} trips`
+                                        : `${tabProjects.length} ${tabProjects.length === 1 ? 'trip' : 'trips'}`}
+                                </span>
+                            )}
+                        </div>
 
                         {activeTab !== 'settings' && (
                             <GlobalSearch
@@ -320,6 +547,171 @@ const ProjectSelection = ({ user, onSelectProject, onNavigateToSection }) => {
                             />
                         )}
                     </div>
+
+                    {/* Filter & Sort Toolbar */}
+                    {activeTab !== 'settings' && hasAssignedTrips && (
+                        <div className="filters-toolbar">
+                            <div className="filters-row">
+                                {/* Quick "Created by Me" Toggle Pill */}
+                                <button
+                                    type="button"
+                                    onClick={() => setCreatorFilter(prev => prev === '__me__' ? 'all' : '__me__')}
+                                    className={`filter-pill-btn ${creatorFilter === '__me__' ? 'active' : ''}`}
+                                    title="Show only trips created by you"
+                                >
+                                    <User size={14} />
+                                    <span>My Trips</span>
+                                    <span className="pill-count">{creatorOptions.myCount}</span>
+                                </button>
+
+                                {/* Creator Dropdown */}
+                                <div className="filter-select-group" title="Filter by trip creator">
+                                    <User size={13} className="filter-select-icon" />
+                                    <select
+                                        value={creatorFilter}
+                                        onChange={(e) => setCreatorFilter(e.target.value)}
+                                        className={`filter-select ${creatorFilter !== 'all' ? 'active' : ''}`}
+                                    >
+                                        <option value="all">Created By: Anyone ({tabProjects.length})</option>
+                                        <option value="__me__">Created By: Me ({creatorOptions.myCount})</option>
+                                        {creatorOptions.others.map(c => (
+                                            <option key={c.value} value={c.value}>
+                                                Created By: {c.label} ({c.count})
+                                            </option>
+                                        ))}
+                                        {creatorOptions.unknownCount > 0 && (
+                                            <option value="__unknown__">Created By: Unknown ({creatorOptions.unknownCount})</option>
+                                        )}
+                                    </select>
+                                </div>
+
+                                {/* Creation Date Filter */}
+                                <div className="filter-select-group" title="Filter by creation date">
+                                    <Clock size={13} className="filter-select-icon" />
+                                    <select
+                                        value={dateFilter}
+                                        onChange={(e) => setDateFilter(e.target.value)}
+                                        className={`filter-select ${dateFilter !== 'all' ? 'active' : ''}`}
+                                    >
+                                        <option value="all">Created: Any Time</option>
+                                        <option value="7d">Created: Last 7 Days</option>
+                                        <option value="30d">Created: Last 30 Days</option>
+                                        <option value="90d">Created: Last 90 Days</option>
+                                        <option value="this_year">Created: This Year ({new Date().getFullYear()})</option>
+                                        {availableYears
+                                            .filter(y => y !== new Date().getFullYear())
+                                            .map(y => (
+                                                <option key={y} value={`year:${y}`}>Created in {y}</option>
+                                            ))}
+                                        <option value="custom">Created: Custom Range...</option>
+                                    </select>
+                                </div>
+
+                                {/* Evaluation Progress Filter */}
+                                <div className="filter-select-group" title="Filter by evaluation progress">
+                                    <Filter size={13} className="filter-select-icon" />
+                                    <select
+                                        value={progressFilter}
+                                        onChange={(e) => setProgressFilter(e.target.value)}
+                                        className={`filter-select ${progressFilter !== 'all' ? 'active' : ''}`}
+                                    >
+                                        <option value="all">Progress: All</option>
+                                        <option value="complete">100% Evaluated</option>
+                                        <option value="partial">In Progress (1–99%)</option>
+                                        <option value="not_started">Not Started (0%)</option>
+                                        <option value="empty">No Sections Yet</option>
+                                    </select>
+                                </div>
+
+                                {/* Sort By Dropdown */}
+                                <div className="filter-select-group" title="Sort trips">
+                                    <ArrowUpDown size={13} className="filter-select-icon" />
+                                    <select
+                                        value={sortBy}
+                                        onChange={(e) => setSortBy(e.target.value)}
+                                        className="filter-select"
+                                    >
+                                        <option value="created_desc">Sort: Created (Newest)</option>
+                                        <option value="created_asc">Sort: Created (Oldest)</option>
+                                        {activeTab === 'completed' && (
+                                            <option value="completed_desc">Sort: Recently Completed</option>
+                                        )}
+                                        <option value="modified_desc">Sort: Last Modified</option>
+                                        <option value="schedule_desc">Sort: Trip Date (Latest)</option>
+                                        <option value="schedule_asc">Sort: Trip Date (Earliest)</option>
+                                        <option value="progress_desc">Sort: Progress (High → Low)</option>
+                                        <option value="progress_asc">Sort: Progress (Low → High)</option>
+                                        <option value="name_asc">Sort: Name (A → Z)</option>
+                                        <option value="name_desc">Sort: Name (Z → A)</option>
+                                    </select>
+                                </div>
+
+                                {/* Quick inline text filter */}
+                                <div className="inline-filter-search">
+                                    <Search size={13} className="inline-filter-icon" />
+                                    <input
+                                        type="text"
+                                         value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        placeholder="Filter list..."
+                                        className="inline-filter-input"
+                                    />
+                                    {searchQuery && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setSearchQuery('')}
+                                            className="inline-filter-clear"
+                                            title="Clear text filter"
+                                        >
+                                            <X size={12} />
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Reset Filters button */}
+                                {hasActiveFilters && (
+                                    <button
+                                        type="button"
+                                        onClick={resetFilters}
+                                        className="filter-reset-btn"
+                                        title="Clear all active filters"
+                                    >
+                                        <X size={13} />
+                                        <span>Reset</span>
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Custom Creation Date Range inputs */}
+                            {dateFilter === 'custom' && (
+                                <div className="custom-date-filter-row">
+                                    <span className="custom-date-label">Created between:</span>
+                                    <input
+                                        type="date"
+                                        value={customDateFrom}
+                                        onChange={(e) => setCustomDateFrom(e.target.value)}
+                                        className="custom-date-input"
+                                    />
+                                    <span className="custom-date-sep">to</span>
+                                    <input
+                                        type="date"
+                                        value={customDateTo}
+                                        onChange={(e) => setCustomDateTo(e.target.value)}
+                                        className="custom-date-input"
+                                    />
+                                    {(customDateFrom || customDateTo) && (
+                                        <button
+                                            type="button"
+                                            onClick={() => { setCustomDateFrom(''); setCustomDateTo(''); }}
+                                            className="filter-reset-btn"
+                                        >
+                                            Clear Dates
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {/* Settings Tab Content */}
                     {activeTab === 'settings' && (
@@ -379,14 +771,8 @@ const ProjectSelection = ({ user, onSelectProject, onNavigateToSection }) => {
                     {activeTab !== 'settings' && (
                         <div className="projects-grid">
 
-                            {/* Create New Trip - Dotted Card (Desktop Only) */}
-                            {/* EVERYONE can create a trip now, so remove isAdmin check for creation */}
-                            {/* Create New Trip - Only show if user has access to at least one trip (or just show it? User said "only show them the trips...").
-                                Actually, if they are new, maybe they SHOULD be able to create?
-                                But user said "If they have not been added... contact admin". This implies they are passive users.
-                                Let's hide it if !hasAssignedTrips.
-                            */}
-                            {hasAssignedTrips && (
+                            {/* Create New Trip - Dotted Card (Desktop Only, hide on Completed tab) */}
+                            {hasAssignedTrips && activeTab !== 'completed' && (
                                 <div className="create-card create-card-grid" onClick={() => document.getElementById('new-trip-input')?.focus()}>
                                     <div className="plus-circle">
                                         <Plus size={24} />
@@ -429,10 +815,11 @@ const ProjectSelection = ({ user, onSelectProject, onNavigateToSection }) => {
                             {/* Project Cards */}
                             {filteredProjects.map(project => {
                                 // Check privileges for this specific project
-                                const isGlobalAdmin = user.email === 'samuel.alalade@ttu.edu';
+                                const isGlobalAdmin = user.email?.toLowerCase() === 'samuel.alalade@ttu.edu';
+                                const isMine = isCreatedByCurrentUser(project);
                                 const isProjectAdmin = isGlobalAdmin ||
-                                    project.createdBy === user.username ||
-                                    (project.users?.find(u => u.email === user.email)?.role === 'admin');
+                                    isMine ||
+                                    (project.users?.find(u => u.email?.toLowerCase() === user.email?.toLowerCase())?.role === 'admin');
 
                                 return (
                                     <div
@@ -515,9 +902,21 @@ const ProjectSelection = ({ user, onSelectProject, onNavigateToSection }) => {
                                                     </div>
                                                 </div>
                                             ) : (
-                                                <h3 className="card-title">
-                                                    {project.name.replace(' (Legacy)', '')}
-                                                </h3>
+                                                <>
+                                                    <h3 className="card-title">
+                                                        {project.name.replace(' (Legacy)', '')}
+                                                    </h3>
+                                                    <div className="card-meta-row" title={`Created by ${project.createdBy || 'Unknown'} on ${formatIsoDate(project.createdAt)}`}>
+                                                        <span className={`creator-chip ${isMine ? 'is-me' : ''}`}>
+                                                            <User size={11} />
+                                                            {isMine ? 'You' : formatCreatorLabel(project.createdBy)}
+                                                        </span>
+                                                        <span className="meta-dot">·</span>
+                                                        <span className="created-date-text">
+                                                            Created {formatIsoDate(project.createdAt)}
+                                                        </span>
+                                                    </div>
+                                                </>
                                             )}
                                         </div>
 
@@ -578,7 +977,15 @@ const ProjectSelection = ({ user, onSelectProject, onNavigateToSection }) => {
 
                             {hasAssignedTrips && filteredProjects.length === 0 && (
                                 <div className="col-span-full flex flex-col items-center justify-center p-12 text-center">
-                                    {activeTab === 'completed' ? (
+                                    {hasActiveFilters ? (
+                                        <>
+                                            <Filter size={44} className="text-[hsl(var(--muted-foreground))] mb-3 opacity-50" />
+                                            <p className="text-[hsl(var(--muted-foreground))] mb-3">No trips match your current filters.</p>
+                                            <button onClick={resetFilters} className="filter-reset-btn" style={{ padding: '8px 16px', fontSize: '13px' }}>
+                                                <X size={14} /> Reset Filters
+                                            </button>
+                                        </>
+                                    ) : activeTab === 'completed' ? (
                                         <>
                                             <CheckCheck size={48} className="text-[hsl(var(--muted-foreground))] mb-4 opacity-50" />
                                             <p className="text-[hsl(var(--muted-foreground))]">No completed trips yet. Mark a trip as complete using the ✓✓ button on the card.</p>
@@ -586,7 +993,7 @@ const ProjectSelection = ({ user, onSelectProject, onNavigateToSection }) => {
                                     ) : (
                                         <>
                                             <FolderOpen size={48} className="text-[hsl(var(--muted-foreground))] mb-4 opacity-50" />
-                                            <p className="text-[hsl(var(--muted-foreground))]">No trips match your search.</p>
+                                            <p className="text-[hsl(var(--muted-foreground))]">No trips found in this section.</p>
                                         </>
                                     )}
                                 </div>
