@@ -9,7 +9,7 @@ import { useUser } from '../context/UserContext';
 import { useNotification } from '../context/NotificationContext';
 import { useVoiceLogger } from '../hooks/useVoiceLogger';
 import { useLocation } from '../context/LocationContext';
-import { getLocalMedia } from '../utils/mediaStore';
+import { saveLocalMedia, getLocalMedia } from '../utils/mediaStore';
 
 const DetailEditor = ({ section, onUpdate }) => {
     const { user } = useUser();
@@ -137,19 +137,18 @@ const DetailEditor = ({ section, onUpdate }) => {
                 const blob = await stopRecording();
                 if (!blob) return;
 
-                const reader = new FileReader();
-                reader.readAsDataURL(blob);
-                reader.onloadend = () => {
-                    const base64Audio = reader.result;
-                    const audioHtml = `
-                        <br/>
-                        <div class="audio-note-container" style="border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 0.5rem; background: hsl(var(--card)); margin: 0.5rem 0;">
-                            <audio controls src="${base64Audio}" style="width: 100%; margin-bottom: 0.5rem;"></audio>
-                        </div>
-                        <br/>
-                    `;
-                    insertHtmlAtCursor(audioHtml);
-                };
+                const mediaId = crypto.randomUUID();
+                await saveLocalMedia(mediaId, blob, 'audio');
+                const localUrl = URL.createObjectURL(blob);
+
+                const audioHtml = `
+                    <br/>
+                    <div class="audio-note-container" style="border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 0.5rem; background: hsl(var(--card)); margin: 0.5rem 0;">
+                        <audio controls src="${localUrl}" data-media-id="${mediaId}" style="width: 100%; margin-bottom: 0.5rem;"></audio>
+                    </div>
+                    <br/>
+                `;
+                insertHtmlAtCursor(audioHtml);
             } catch (err) {
                 console.error("Failed to stop recording:", err);
                 showAlert("Recording failed to stop properly.");
@@ -200,37 +199,15 @@ const DetailEditor = ({ section, onUpdate }) => {
         }
     };
 
-    const compressImage = (file, maxWidth = 800, quality = 0.6) => {
-        return new Promise((resolve) => {
-            const img = new Image();
-            const url = URL.createObjectURL(file);
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                let w = img.width;
-                let h = img.height;
-                if (w > maxWidth) {
-                    h = Math.round((maxWidth / w) * h);
-                    w = maxWidth;
-                }
-                canvas.width = w;
-                canvas.height = h;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, w, h);
-                const dataUrl = canvas.toDataURL('image/jpeg', quality);
-                URL.revokeObjectURL(url);
-                resolve(dataUrl);
-            };
-            img.src = url;
-        });
-    };
-
     const handleImageSelect = async (e) => {
         recordCaptureLocation();
         const file = e.target.files[0];
         if (!file) return;
 
-        const dataUrl = await compressImage(file);
-        const imgHtml = `<img src="${dataUrl}" style="max-width: 100%; width: 200px; border-radius: 8px; margin: 0.5rem 0;" /><br/>`;
+        const mediaId = crypto.randomUUID();
+        await saveLocalMedia(mediaId, file, 'image');
+        const localUrl = URL.createObjectURL(file);
+        const imgHtml = `<img src="${localUrl}" data-media-id="${mediaId}" style="max-width: 100%; width: 200px; border-radius: 8px; margin: 0.5rem 0;" /><br/>`;
         insertHtmlAtCursor(imgHtml);
         e.target.value = '';
     };
@@ -314,18 +291,16 @@ const DetailEditor = ({ section, onUpdate }) => {
                 </div>
             `;
 
-            // Extract data-media-id to prepare for offline sync queue
+            // Extract data-media-id to prepare for offline sync queue while keeping data-media-id
+            // on the elements so the capturing device always renders its local high-res copy
             let pendingMedia = [];
-            // Replace temporary blob URLs in images
             content = content.replace(/<img[^>]*data-media-id="([^"]+)"[^>]*>/gi, (match, id) => {
                 pendingMedia.push(id);
-                // Strip the huge local blob URL and data-media-id entirely, replace with local-media:// protocol
-                return match.replace(/src="[^"]+"/, `src="local-media://${id}"`).replace(/data-media-id="[^"]+"/, '');
+                return match.replace(/src="[^"]+"/, `src="local-media://${id}"`);
             });
-            // Replace temporary blob URLs in audio
             content = content.replace(/<audio[^>]*data-media-id="([^"]+)"[^>]*><\/audio>/gi, (match, id) => {
                 pendingMedia.push(id);
-                return match.replace(/src="[^"]+"/, `src="local-media://${id}"`).replace(/data-media-id="[^"]+"/, '');
+                return match.replace(/src="[^"]+"/, `src="local-media://${id}"`);
             });
 
             // If content is too large for Firestore even after stripping huge blobs, alert the user to prevent silent data loss
@@ -706,32 +681,42 @@ const HistoryItem = React.memo(({ detail, isEditing, transcribeAudio, modelProgr
 
     useEffect(() => {
         let isMounted = true;
+        const objectUrls = [];
         const hydrateMedia = async () => {
             let html = detail.content;
-            if (html.includes('local-media://')) {
+            if (html.includes('local-media://') || html.includes('data-media-id=')) {
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
                 
-                // Hydrate images
-                const imgs = doc.querySelectorAll('img[src^="local-media://"]');
+                // Hydrate images: prefer local high-res original if present on this device,
+                // otherwise keep synced compressed src from Firestore
+                const imgs = doc.querySelectorAll('img[data-media-id], img[src^="local-media://"]');
                 for (const img of imgs) {
-                    const id = img.src.replace('local-media://', '');
+                    const rawSrc = img.getAttribute('src') || '';
+                    const id = img.getAttribute('data-media-id') || (rawSrc.startsWith('local-media://') ? rawSrc.replace('local-media://', '') : '');
+                    if (!id) continue;
                     const blob = await getLocalMedia(id);
                     if (blob) {
-                        img.src = URL.createObjectURL(blob);
-                    } else {
+                        const objUrl = URL.createObjectURL(blob);
+                        objectUrls.push(objUrl);
+                        img.src = objUrl;
+                    } else if (rawSrc.startsWith('local-media://')) {
                         img.alt = 'Media syncing from another device...';
                         img.style.opacity = 0.5;
                     }
                 }
                 
-                // Hydrate audio
-                const audios = doc.querySelectorAll('audio[src^="local-media://"]');
+                // Hydrate audio: prefer local original if present on this device
+                const audios = doc.querySelectorAll('audio[data-media-id], audio[src^="local-media://"]');
                 for (const audio of audios) {
-                    const id = audio.src.replace('local-media://', '');
+                    const rawSrc = audio.getAttribute('src') || '';
+                    const id = audio.getAttribute('data-media-id') || (rawSrc.startsWith('local-media://') ? rawSrc.replace('local-media://', '') : '');
+                    if (!id) continue;
                     const blob = await getLocalMedia(id);
                     if (blob) {
-                        audio.src = URL.createObjectURL(blob);
+                        const objUrl = URL.createObjectURL(blob);
+                        objectUrls.push(objUrl);
+                        audio.src = objUrl;
                     }
                 }
                 
@@ -741,7 +726,10 @@ const HistoryItem = React.memo(({ detail, isEditing, transcribeAudio, modelProgr
             }
         };
         hydrateMedia();
-        return () => { isMounted = false; };
+        return () => {
+            isMounted = false;
+            objectUrls.forEach(url => URL.revokeObjectURL(url));
+        };
     }, [detail.content]);
 
     // WHISPER_SENTINEL_RE for internal filtering
@@ -765,9 +753,13 @@ const HistoryItem = React.memo(({ detail, isEditing, transcribeAudio, modelProgr
 
         setIsTranscribing(true);
         try {
-            // Convert data URL back to blob
-            const res = await fetch(audioEl.src);
-            const blob = await res.blob();
+            const rawSrc = audioEl.getAttribute('src') || '';
+            const mediaId = audioEl.getAttribute('data-media-id') || (rawSrc.startsWith('local-media://') ? rawSrc.replace('local-media://', '') : '');
+            let blob = mediaId ? await getLocalMedia(mediaId) : null;
+            if (!blob) {
+                const res = await fetch(audioEl.src);
+                blob = await res.blob();
+            }
 
             const text = await transcribeAudio(blob);
             const rawText = text ?? '';

@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { getLocalMedia, deleteLocalMedia } from '../utils/mediaStore';
+import { getLocalMedia } from '../utils/mediaStore';
 import { useUser } from '../context/UserContext';
 
 const blobToDataUrl = (blob) => {
@@ -13,7 +13,7 @@ const blobToDataUrl = (blob) => {
     });
 };
 
-const compressImageBlob = (blob, maxWidth = 800, quality = 0.6) => {
+const compressImageBlob = (blob, maxWidth = 1600, quality = 0.8) => {
     return new Promise((resolve, reject) => {
         const img = new Image();
         const url = URL.createObjectURL(blob);
@@ -41,6 +41,26 @@ const compressImageBlob = (blob, maxWidth = 800, quality = 0.6) => {
     });
 };
 
+// Compress image to highest quality that fits within maxBytes
+const compressImageToFit = async (blob, maxBytes) => {
+    const tiers = [
+        { maxWidth: 1600, quality: 0.82 },
+        { maxWidth: 1280, quality: 0.75 },
+        { maxWidth: 1024, quality: 0.65 },
+        { maxWidth: 800, quality: 0.55 },
+        { maxWidth: 600, quality: 0.45 }
+    ];
+
+    let dataUrl = null;
+    for (const tier of tiers) {
+        dataUrl = await compressImageBlob(blob, tier.maxWidth, tier.quality);
+        if (dataUrl.length <= maxBytes) {
+            return dataUrl;
+        }
+    }
+    return dataUrl;
+};
+
 export const useMediaSync = () => {
     const { user } = useUser();
 
@@ -61,7 +81,12 @@ export const useMediaSync = () => {
 
                 let updatedContent = detail.content;
                 const stillPending = [];
-                const syncedIds = [];
+                let syncedCount = 0;
+
+                // Firestore max doc size is 1,048,576 bytes; keep safe total budget of 880,000 bytes
+                const baseSize = new Blob([updatedContent]).size;
+                const maxTotalBudget = Math.max(200_000, 880_000 - baseSize);
+                const perItemBudget = Math.floor(maxTotalBudget / detail.pendingMedia.length);
 
                 for (const mediaId of detail.pendingMedia) {
                     try {
@@ -79,12 +104,7 @@ export const useMediaSync = () => {
                         let dataUrl;
                         if (isImage) {
                             try {
-                                dataUrl = await compressImageBlob(blob, 800, 0.6);
-                                // If the resulting content would approach Firestore's 1MB limit, compress further
-                                const projectedSize = new Blob([updatedContent]).size + dataUrl.length;
-                                if (projectedSize > 850_000) {
-                                    dataUrl = await compressImageBlob(blob, 500, 0.4);
-                                }
+                                dataUrl = await compressImageToFit(blob, perItemBudget);
                             } catch {
                                 dataUrl = await blobToDataUrl(blob);
                             }
@@ -92,17 +112,30 @@ export const useMediaSync = () => {
                             dataUrl = await blobToDataUrl(blob);
                         }
 
-                        // Replace local-media:// protocol with compressed dataUrl in HTML
-                        updatedContent = updatedContent.replaceAll(`local-media://${mediaId}`, dataUrl);
-                        syncedIds.push(mediaId);
+                        // Ensure data-media-id is preserved on the tag so the capturing device
+                        // always loads its full-resolution original blob from local IndexedDB
+                        const hasDataAttr = new RegExp(`data-media-id="${mediaId}"`, 'i').test(updatedContent);
+                        if (hasDataAttr) {
+                            updatedContent = updatedContent.replaceAll(`local-media://${mediaId}`, dataUrl);
+                        } else {
+                            updatedContent = updatedContent.replaceAll(
+                                `src="local-media://${mediaId}"`,
+                                `src="${dataUrl}" data-media-id="${mediaId}"`
+                            );
+                            updatedContent = updatedContent.replaceAll(`local-media://${mediaId}`, dataUrl);
+                        }
+
+                        // NOTE: We intentionally DO NOT delete the local media from IndexedDB
+                        // so this device retains the 100% uncompressed original quality locally.
+                        syncedCount++;
                     } catch (err) {
                         console.error('Failed to sync media:', mediaId, err);
                         stillPending.push(mediaId); // Retry later
                     }
                 }
 
-                // If content changed or pending list shrank, update Firestore first, then clean up local DB
-                if (syncedIds.length > 0) {
+                // If any pending media was synced, update Firestore
+                if (syncedCount > 0) {
                     try {
                         const detailRef = doc(db, 'details', document.id);
                         await updateDoc(detailRef, {
@@ -110,10 +143,6 @@ export const useMediaSync = () => {
                             pendingMedia: stillPending,
                             hasPendingMedia: stillPending.length > 0
                         });
-
-                        for (const mediaId of syncedIds) {
-                            await deleteLocalMedia(mediaId);
-                        }
                     } catch (err) {
                         console.error('Failed to update detail after media sync:', err);
                     }
@@ -124,4 +153,5 @@ export const useMediaSync = () => {
         return () => unsubscribe();
     }, [user]);
 };
+
 
