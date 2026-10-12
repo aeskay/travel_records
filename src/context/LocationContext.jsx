@@ -13,8 +13,6 @@ export const LocationProvider = ({ children }) => {
             return;
         }
 
-        console.log("[LocationProvider] Starting global high-accuracy GPS tracking...");
-        
         const options = {
             enableHighAccuracy: true,
             maximumAge: 0,
@@ -25,17 +23,14 @@ export const LocationProvider = ({ children }) => {
             (position) => {
                 setLocation(position);
                 setError(null);
-                console.log(`[LocationProvider] Global GPS update. Lat: ${position.coords.latitude.toFixed(7)}, Lng: ${position.coords.longitude.toFixed(7)}, Accuracy: ${position.coords.accuracy.toFixed(1)}m`);
             },
             (err) => {
-                console.warn("[LocationProvider] Global GPS tracking error:", err);
                 setError(err);
             },
             options
         );
 
         return () => {
-            console.log("[LocationProvider] Stopping global GPS tracking.");
             navigator.geolocation.clearWatch(watchId);
         };
     }, []);

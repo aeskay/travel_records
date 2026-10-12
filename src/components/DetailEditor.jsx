@@ -51,7 +51,6 @@ const DetailEditor = ({ section, onUpdate }) => {
             // Snapshot location on interaction, or upgrade it if the new one is more accurate
             if (!capturePosRef.current || latestPosRef.current.coords.accuracy < capturePosRef.current.coords.accuracy) {
                 capturePosRef.current = latestPosRef.current;
-                console.log("[DetailEditor] Snapshotted location at interaction:", latestPosRef.current.coords.latitude, latestPosRef.current.coords.longitude, `Accuracy: ${latestPosRef.current.coords.accuracy}m`);
             }
         }
     }, []);
@@ -67,7 +66,6 @@ const DetailEditor = ({ section, onUpdate }) => {
             if (isInteractingRef.current) {
                 if (!capturePosRef.current || globalLocation.coords.accuracy < capturePosRef.current.coords.accuracy) {
                     capturePosRef.current = globalLocation;
-                    console.log(`[DetailEditor] GPS settled further (global). Auto-upgraded captured position accuracy to: ${globalLocation.coords.accuracy}m`);
                 }
             }
         }
@@ -677,7 +675,9 @@ const HistoryItem = React.memo(({ detail, isEditing, transcribeAudio, modelProgr
     const itemRef = useRef(null);
     const [selectedImg, setSelectedImg] = useState(null);
     const [isTranscribing, setIsTranscribing] = useState(false);
-    const [hydratedContent, setHydratedContent] = useState(detail.content);
+    const [hydratedContent, setHydratedContent] = useState(() =>
+        detail.content ? detail.content.replace(/src="local-media:\/\/[^"]+"/gi, '') : detail.content
+    );
 
     useEffect(() => {
         let isMounted = true;
@@ -701,6 +701,7 @@ const HistoryItem = React.memo(({ detail, isEditing, transcribeAudio, modelProgr
                         objectUrls.push(objUrl);
                         img.src = objUrl;
                     } else if (rawSrc.startsWith('local-media://')) {
+                        img.removeAttribute('src');
                         img.alt = 'Media syncing from another device...';
                         img.style.opacity = 0.5;
                     }
