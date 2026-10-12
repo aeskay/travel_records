@@ -23,7 +23,7 @@ const EditSectionModal = ({ section, onSave, onClose }) => {
 
     // Define the editable fields
     const fields = [
-        { key: 'id', label: 'Section ID', disabled: true },
+        { key: 'id', label: 'Section ID', required: true, placeholder: 'Enter Section ID' },
         { key: 'test_sequence', label: 'Test Sequence', type: 'number', placeholder: 'Leave blank to exclude from Trip Map' },
         { key: 'highway', label: 'Highway' },
         { key: 'type', label: 'Type' },
@@ -73,6 +73,7 @@ const EditSectionModal = ({ section, onSave, onClose }) => {
                                 value={form[f.key] || ''}
                                 onChange={(e) => handleChange(f.key, e.target.value)}
                                 disabled={f.disabled}
+                                required={f.required}
                                 placeholder={f.placeholder || ''}
                                 style={{
                                     padding: '0.5rem 0.75rem',

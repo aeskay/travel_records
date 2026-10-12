@@ -185,7 +185,88 @@ export const addSection = async (section, username, projectId) => {
         lastModifiedBy: username || 'anon',
         lastModified: new Date().toISOString()
     };
+    delete data.docId;
     await setDoc(doc(sectionsRef, compositeDocId), data, { merge: true });
+    return { docId: compositeDocId, id: shortId };
+};
+
+export const renameOrUpdateSection = async (oldSection, updatedSection, username, projectId) => {
+    if (!projectId && !oldSection?.projectId && !updatedSection?.projectId) {
+        throw new Error("Project ID is required");
+    }
+    const pid = projectId || updatedSection.projectId || oldSection.projectId;
+    const oldShortId = getShortId(oldSection, pid);
+    const oldDocId = oldSection.docId || `${pid}_${oldShortId}`;
+
+    const rawNewId = (updatedSection.id || '').trim();
+    if (!rawNewId) {
+        throw new Error("Section ID cannot be empty.");
+    }
+    const newShortId = getShortId({ id: rawNewId }, pid);
+    const newDocId = `${pid}_${newShortId}`;
+
+    // If Section ID did not change, perform standard update
+    if (newShortId === oldShortId && newDocId === oldDocId) {
+        await addSection({ ...updatedSection, id: newShortId }, username, pid);
+        return { docId: newDocId, id: newShortId, renamed: false };
+    }
+
+    // Check that the target Section ID doesn't already exist in this project
+    const existingTargetSnap = await getDoc(doc(sectionsRef, newDocId));
+    if (existingTargetSnap.exists()) {
+        throw new Error(`A section with ID "${newShortId}" already exists in this trip.`);
+    }
+
+    const batch = writeBatch(db);
+    const nowIso = new Date().toISOString();
+
+    // 1. Create the new section document with the updated ID and fields
+    const newSectionData = {
+        ...oldSection,
+        ...updatedSection,
+        id: newShortId,
+        projectId: pid,
+        lastModifiedBy: username || 'anon',
+        lastModified: nowIso
+    };
+    delete newSectionData.docId;
+    batch.set(doc(sectionsRef, newDocId), newSectionData);
+
+    // 2. Re-link all shared details/notes/photos pointing to the old section docId
+    const detailsQ = query(detailsRef, where('sectionId', '==', oldDocId));
+    const detailsSnap = await getDocs(detailsQ);
+    detailsSnap.docs.forEach(d => {
+        batch.update(d.ref, {
+            sectionId: newDocId,
+            projectId: pid
+        });
+    });
+
+    // 3. Migrate any private notes for this section in this project
+    const privateNotesQ = query(
+        privateNotesRef,
+        where('projectId', '==', pid),
+        where('sectionId', '==', oldShortId)
+    );
+    const privateNotesSnap = await getDocs(privateNotesQ);
+    privateNotesSnap.docs.forEach(nDoc => {
+        const noteData = nDoc.data();
+        const noteUser = noteData.username || username || 'anon';
+        const newNoteDocId = `${pid}_${newShortId}_${noteUser}`;
+        batch.set(doc(privateNotesRef, newNoteDocId), {
+            ...noteData,
+            sectionId: newShortId,
+            projectId: pid,
+            lastModified: nowIso
+        });
+        batch.delete(nDoc.ref);
+    });
+
+    // 4. Delete the old section document
+    batch.delete(doc(sectionsRef, oldDocId));
+
+    await batch.commit();
+    return { docId: newDocId, id: newShortId, renamed: true };
 };
 
 export const addSections = async (sections, username, { merge = false, projectId = null } = {}) => {

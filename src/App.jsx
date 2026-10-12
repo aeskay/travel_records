@@ -11,7 +11,7 @@ import TripMapView from './components/TripMapView';
 import DashboardView from './components/DashboardView';
 import ProjectSelection from './components/ProjectSelection';
 import TransferSectionModal from './components/TransferSectionModal';
-import { getSections, addSections, addSection, deleteSection, getProject, cloneSectionToProject, moveSectionToProject } from './db';
+import { getSections, addSections, addSection, renameOrUpdateSection, deleteSection, getProject, cloneSectionToProject, moveSectionToProject } from './db';
 import { parseCSV } from './utils/csvImporter';
 import { UserProvider, useUser } from './context/UserContext';
 import { NotificationProvider, useNotification } from './context/NotificationContext';
@@ -217,10 +217,23 @@ function AppContent() {
   };
 
   const handleEditSection = async (updatedSection) => {
-    if (!isAdmin) return;
-    await addSection(updatedSection, user.username, currentProject.id);
-    setEditingSection(null);
-    loadSections();
+    if (!isAdmin || !editingSection) return;
+    try {
+      const oldDocId = editingSection.docId;
+      const result = await renameOrUpdateSection(editingSection, updatedSection, user.username, currentProject.id);
+      setEditingSection(null);
+      const data = await getSections(user.username, currentProject.id);
+      setSections(data || []);
+      if (selectedSection && selectedSection.docId === oldDocId) {
+        const newlyUpdated = (data || []).find(s => s.docId === result.docId || s.id === result.id);
+        if (newlyUpdated) setSelectedSection(newlyUpdated);
+      }
+      if (result.renamed) {
+        showToast(`Section ID updated to "${result.id}"`);
+      }
+    } catch (err) {
+      showAlert(err.message || "Failed to update section.");
+    }
   };
 
   const handleTransferSubmit = async (targetProjectId, targetType) => {
